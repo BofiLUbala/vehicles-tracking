@@ -149,9 +149,37 @@ describe('TrackingService (intégration DB réelle)', () => {
     const alert = await prisma.alert.findFirst({ where: { vehicleId: vehicle.id, type: 'SPEEDING' } });
     expect(alert).not.toBeNull();
     expect(alert!.level).toBe('MEDIUM');
+    expect(alert!.score).toBe(20); // barème section 15 : +20 saut géographique impossible
+    expect(alert!.scoreBreakdown).toEqual([expect.objectContaining({ points: 20 })]);
 
     const count = await prisma.gpsPosition.count({ where: { vehicleId: vehicle.id } });
     expect(count).toBe(2);
+  });
+
+  it('crée une alerte MOCK_GPS avec un score explicable de 40 (barème section 15)', async () => {
+    const { driver, vehicle } = await setupDriverAndVehicle();
+
+    const dto = positionPayload({ vehicleId: vehicle.id, isMocked: true });
+    await tracking.ingestSingle(driver.id, DEMO_ORG_ID, dto);
+
+    const alert = await prisma.alert.findFirst({ where: { vehicleId: vehicle.id, type: 'MOCK_GPS' } });
+    expect(alert).not.toBeNull();
+    expect(alert!.level).toBe('LOW');
+    expect(alert!.score).toBe(40);
+    expect(alert!.scoreBreakdown).toEqual([expect.objectContaining({ points: 40 })]);
+  });
+
+  it('précision GPS insuffisante : position quand même stockée, alerte basse sévérité score 10', async () => {
+    const { driver, vehicle } = await setupDriverAndVehicle();
+
+    const dto = positionPayload({ vehicleId: vehicle.id, accuracy: 500 }); // > MAX_GPS_ACCURACY_METERS (100 par défaut)
+    const stored = await tracking.ingestSingle(driver.id, DEMO_ORG_ID, dto);
+    expect(stored.id).toBeDefined();
+
+    const alert = await prisma.alert.findFirst({ where: { vehicleId: vehicle.id, type: 'OTHER' } });
+    expect(alert).not.toBeNull();
+    expect(alert!.level).toBe('LOW');
+    expect(alert!.score).toBe(10);
   });
 
   it('GET vehicles/live dérive correctement le statut (STOPPED récent vs OFFLINE ancien)', async () => {

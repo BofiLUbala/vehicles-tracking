@@ -1555,6 +1555,864 @@ class PendingValidationsCompanion extends UpdateCompanion<PendingValidation> {
   }
 }
 
+class $PendingFuelRecordsTable extends PendingFuelRecords
+    with TableInfo<$PendingFuelRecordsTable, PendingFuelRecord> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PendingFuelRecordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _clientEventIdMeta =
+      const VerificationMeta('clientEventId');
+  @override
+  late final GeneratedColumn<String> clientEventId = GeneratedColumn<String>(
+      'client_event_id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'));
+  static const VerificationMeta _vehicleIdMeta =
+      const VerificationMeta('vehicleId');
+  @override
+  late final GeneratedColumn<String> vehicleId = GeneratedColumn<String>(
+      'vehicle_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _litersMeta = const VerificationMeta('liters');
+  @override
+  late final GeneratedColumn<double> liters = GeneratedColumn<double>(
+      'liters', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _totalCostMeta =
+      const VerificationMeta('totalCost');
+  @override
+  late final GeneratedColumn<double> totalCost = GeneratedColumn<double>(
+      'total_cost', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _odometerMeta =
+      const VerificationMeta('odometer');
+  @override
+  late final GeneratedColumn<double> odometer = GeneratedColumn<double>(
+      'odometer', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _fuelTypeMeta =
+      const VerificationMeta('fuelType');
+  @override
+  late final GeneratedColumn<String> fuelType = GeneratedColumn<String>(
+      'fuel_type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _stationNameMeta =
+      const VerificationMeta('stationName');
+  @override
+  late final GeneratedColumn<String> stationName = GeneratedColumn<String>(
+      'station_name', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _latitudeMeta =
+      const VerificationMeta('latitude');
+  @override
+  late final GeneratedColumn<double> latitude = GeneratedColumn<double>(
+      'latitude', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _longitudeMeta =
+      const VerificationMeta('longitude');
+  @override
+  late final GeneratedColumn<double> longitude = GeneratedColumn<double>(
+      'longitude', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _recordedAtMeta =
+      const VerificationMeta('recordedAt');
+  @override
+  late final GeneratedColumn<DateTime> recordedAt = GeneratedColumn<DateTime>(
+      'recorded_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _receiptPhotoPathMeta =
+      const VerificationMeta('receiptPhotoPath');
+  @override
+  late final GeneratedColumn<String> receiptPhotoPath = GeneratedColumn<String>(
+      'receipt_photo_path', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _odometerPhotoPathMeta =
+      const VerificationMeta('odometerPhotoPath');
+  @override
+  late final GeneratedColumn<String> odometerPhotoPath =
+      GeneratedColumn<String>('odometer_photo_path', aliasedName, false,
+          type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _createdAtDeviceMeta =
+      const VerificationMeta('createdAtDevice');
+  @override
+  late final GeneratedColumn<DateTime> createdAtDevice =
+      GeneratedColumn<DateTime>('created_at_device', aliasedName, false,
+          type: DriftSqlType.dateTime,
+          requiredDuringInsert: false,
+          defaultValue: currentDateAndTime);
+  @override
+  late final GeneratedColumnWithTypeConverter<SyncStatus, String> syncStatus =
+      GeneratedColumn<String>('sync_status', aliasedName, false,
+              type: DriftSqlType.string,
+              requiredDuringInsert: false,
+              defaultValue: const Constant('pending'))
+          .withConverter<SyncStatus>(
+              $PendingFuelRecordsTable.$convertersyncStatus);
+  static const VerificationMeta _retryCountMeta =
+      const VerificationMeta('retryCount');
+  @override
+  late final GeneratedColumn<int> retryCount = GeneratedColumn<int>(
+      'retry_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _lastErrorMeta =
+      const VerificationMeta('lastError');
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+      'last_error', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _nextRetryAtMeta =
+      const VerificationMeta('nextRetryAt');
+  @override
+  late final GeneratedColumn<DateTime> nextRetryAt = GeneratedColumn<DateTime>(
+      'next_retry_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        clientEventId,
+        vehicleId,
+        liters,
+        totalCost,
+        odometer,
+        fuelType,
+        stationName,
+        latitude,
+        longitude,
+        recordedAt,
+        receiptPhotoPath,
+        odometerPhotoPath,
+        createdAtDevice,
+        syncStatus,
+        retryCount,
+        lastError,
+        nextRetryAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pending_fuel_records';
+  @override
+  VerificationContext validateIntegrity(Insertable<PendingFuelRecord> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('client_event_id')) {
+      context.handle(
+          _clientEventIdMeta,
+          clientEventId.isAcceptableOrUnknown(
+              data['client_event_id']!, _clientEventIdMeta));
+    } else if (isInserting) {
+      context.missing(_clientEventIdMeta);
+    }
+    if (data.containsKey('vehicle_id')) {
+      context.handle(_vehicleIdMeta,
+          vehicleId.isAcceptableOrUnknown(data['vehicle_id']!, _vehicleIdMeta));
+    } else if (isInserting) {
+      context.missing(_vehicleIdMeta);
+    }
+    if (data.containsKey('liters')) {
+      context.handle(_litersMeta,
+          liters.isAcceptableOrUnknown(data['liters']!, _litersMeta));
+    } else if (isInserting) {
+      context.missing(_litersMeta);
+    }
+    if (data.containsKey('total_cost')) {
+      context.handle(_totalCostMeta,
+          totalCost.isAcceptableOrUnknown(data['total_cost']!, _totalCostMeta));
+    } else if (isInserting) {
+      context.missing(_totalCostMeta);
+    }
+    if (data.containsKey('odometer')) {
+      context.handle(_odometerMeta,
+          odometer.isAcceptableOrUnknown(data['odometer']!, _odometerMeta));
+    } else if (isInserting) {
+      context.missing(_odometerMeta);
+    }
+    if (data.containsKey('fuel_type')) {
+      context.handle(_fuelTypeMeta,
+          fuelType.isAcceptableOrUnknown(data['fuel_type']!, _fuelTypeMeta));
+    } else if (isInserting) {
+      context.missing(_fuelTypeMeta);
+    }
+    if (data.containsKey('station_name')) {
+      context.handle(
+          _stationNameMeta,
+          stationName.isAcceptableOrUnknown(
+              data['station_name']!, _stationNameMeta));
+    }
+    if (data.containsKey('latitude')) {
+      context.handle(_latitudeMeta,
+          latitude.isAcceptableOrUnknown(data['latitude']!, _latitudeMeta));
+    } else if (isInserting) {
+      context.missing(_latitudeMeta);
+    }
+    if (data.containsKey('longitude')) {
+      context.handle(_longitudeMeta,
+          longitude.isAcceptableOrUnknown(data['longitude']!, _longitudeMeta));
+    } else if (isInserting) {
+      context.missing(_longitudeMeta);
+    }
+    if (data.containsKey('recorded_at')) {
+      context.handle(
+          _recordedAtMeta,
+          recordedAt.isAcceptableOrUnknown(
+              data['recorded_at']!, _recordedAtMeta));
+    } else if (isInserting) {
+      context.missing(_recordedAtMeta);
+    }
+    if (data.containsKey('receipt_photo_path')) {
+      context.handle(
+          _receiptPhotoPathMeta,
+          receiptPhotoPath.isAcceptableOrUnknown(
+              data['receipt_photo_path']!, _receiptPhotoPathMeta));
+    } else if (isInserting) {
+      context.missing(_receiptPhotoPathMeta);
+    }
+    if (data.containsKey('odometer_photo_path')) {
+      context.handle(
+          _odometerPhotoPathMeta,
+          odometerPhotoPath.isAcceptableOrUnknown(
+              data['odometer_photo_path']!, _odometerPhotoPathMeta));
+    } else if (isInserting) {
+      context.missing(_odometerPhotoPathMeta);
+    }
+    if (data.containsKey('created_at_device')) {
+      context.handle(
+          _createdAtDeviceMeta,
+          createdAtDevice.isAcceptableOrUnknown(
+              data['created_at_device']!, _createdAtDeviceMeta));
+    }
+    if (data.containsKey('retry_count')) {
+      context.handle(
+          _retryCountMeta,
+          retryCount.isAcceptableOrUnknown(
+              data['retry_count']!, _retryCountMeta));
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(_lastErrorMeta,
+          lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta));
+    }
+    if (data.containsKey('next_retry_at')) {
+      context.handle(
+          _nextRetryAtMeta,
+          nextRetryAt.isAcceptableOrUnknown(
+              data['next_retry_at']!, _nextRetryAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PendingFuelRecord map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PendingFuelRecord(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      clientEventId: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}client_event_id'])!,
+      vehicleId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}vehicle_id'])!,
+      liters: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}liters'])!,
+      totalCost: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}total_cost'])!,
+      odometer: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}odometer'])!,
+      fuelType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}fuel_type'])!,
+      stationName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}station_name']),
+      latitude: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}latitude'])!,
+      longitude: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}longitude'])!,
+      recordedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}recorded_at'])!,
+      receiptPhotoPath: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}receipt_photo_path'])!,
+      odometerPhotoPath: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}odometer_photo_path'])!,
+      createdAtDevice: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}created_at_device'])!,
+      syncStatus: $PendingFuelRecordsTable.$convertersyncStatus.fromSql(
+          attachedDatabase.typeMapping.read(
+              DriftSqlType.string, data['${effectivePrefix}sync_status'])!),
+      retryCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+      lastError: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}last_error']),
+      nextRetryAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}next_retry_at']),
+    );
+  }
+
+  @override
+  $PendingFuelRecordsTable createAlias(String alias) {
+    return $PendingFuelRecordsTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<SyncStatus, String> $convertersyncStatus =
+      const SyncStatusConverter();
+}
+
+class PendingFuelRecord extends DataClass
+    implements Insertable<PendingFuelRecord> {
+  final int id;
+  final String clientEventId;
+  final String vehicleId;
+  final double liters;
+  final double totalCost;
+  final double odometer;
+
+  /// Valeur brute de l'enum `FuelType` côté API (DIESEL/PETROL/ELECTRIC/
+  /// OTHER — `apps/api/prisma/schema.prisma`).
+  final String fuelType;
+  final String? stationName;
+  final double latitude;
+  final double longitude;
+  final DateTime recordedAt;
+
+  /// Chemins locaux des deux photos (reçu, compteur) — les fichiers restent
+  /// sur le disque de l'appareil jusqu'à l'envoi multipart réussi.
+  final String receiptPhotoPath;
+  final String odometerPhotoPath;
+  final DateTime createdAtDevice;
+  final SyncStatus syncStatus;
+  final int retryCount;
+  final String? lastError;
+  final DateTime? nextRetryAt;
+  const PendingFuelRecord(
+      {required this.id,
+      required this.clientEventId,
+      required this.vehicleId,
+      required this.liters,
+      required this.totalCost,
+      required this.odometer,
+      required this.fuelType,
+      this.stationName,
+      required this.latitude,
+      required this.longitude,
+      required this.recordedAt,
+      required this.receiptPhotoPath,
+      required this.odometerPhotoPath,
+      required this.createdAtDevice,
+      required this.syncStatus,
+      required this.retryCount,
+      this.lastError,
+      this.nextRetryAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['client_event_id'] = Variable<String>(clientEventId);
+    map['vehicle_id'] = Variable<String>(vehicleId);
+    map['liters'] = Variable<double>(liters);
+    map['total_cost'] = Variable<double>(totalCost);
+    map['odometer'] = Variable<double>(odometer);
+    map['fuel_type'] = Variable<String>(fuelType);
+    if (!nullToAbsent || stationName != null) {
+      map['station_name'] = Variable<String>(stationName);
+    }
+    map['latitude'] = Variable<double>(latitude);
+    map['longitude'] = Variable<double>(longitude);
+    map['recorded_at'] = Variable<DateTime>(recordedAt);
+    map['receipt_photo_path'] = Variable<String>(receiptPhotoPath);
+    map['odometer_photo_path'] = Variable<String>(odometerPhotoPath);
+    map['created_at_device'] = Variable<DateTime>(createdAtDevice);
+    {
+      map['sync_status'] = Variable<String>(
+          $PendingFuelRecordsTable.$convertersyncStatus.toSql(syncStatus));
+    }
+    map['retry_count'] = Variable<int>(retryCount);
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    if (!nullToAbsent || nextRetryAt != null) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
+    }
+    return map;
+  }
+
+  PendingFuelRecordsCompanion toCompanion(bool nullToAbsent) {
+    return PendingFuelRecordsCompanion(
+      id: Value(id),
+      clientEventId: Value(clientEventId),
+      vehicleId: Value(vehicleId),
+      liters: Value(liters),
+      totalCost: Value(totalCost),
+      odometer: Value(odometer),
+      fuelType: Value(fuelType),
+      stationName: stationName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stationName),
+      latitude: Value(latitude),
+      longitude: Value(longitude),
+      recordedAt: Value(recordedAt),
+      receiptPhotoPath: Value(receiptPhotoPath),
+      odometerPhotoPath: Value(odometerPhotoPath),
+      createdAtDevice: Value(createdAtDevice),
+      syncStatus: Value(syncStatus),
+      retryCount: Value(retryCount),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      nextRetryAt: nextRetryAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextRetryAt),
+    );
+  }
+
+  factory PendingFuelRecord.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PendingFuelRecord(
+      id: serializer.fromJson<int>(json['id']),
+      clientEventId: serializer.fromJson<String>(json['clientEventId']),
+      vehicleId: serializer.fromJson<String>(json['vehicleId']),
+      liters: serializer.fromJson<double>(json['liters']),
+      totalCost: serializer.fromJson<double>(json['totalCost']),
+      odometer: serializer.fromJson<double>(json['odometer']),
+      fuelType: serializer.fromJson<String>(json['fuelType']),
+      stationName: serializer.fromJson<String?>(json['stationName']),
+      latitude: serializer.fromJson<double>(json['latitude']),
+      longitude: serializer.fromJson<double>(json['longitude']),
+      recordedAt: serializer.fromJson<DateTime>(json['recordedAt']),
+      receiptPhotoPath: serializer.fromJson<String>(json['receiptPhotoPath']),
+      odometerPhotoPath: serializer.fromJson<String>(json['odometerPhotoPath']),
+      createdAtDevice: serializer.fromJson<DateTime>(json['createdAtDevice']),
+      syncStatus: serializer.fromJson<SyncStatus>(json['syncStatus']),
+      retryCount: serializer.fromJson<int>(json['retryCount']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'clientEventId': serializer.toJson<String>(clientEventId),
+      'vehicleId': serializer.toJson<String>(vehicleId),
+      'liters': serializer.toJson<double>(liters),
+      'totalCost': serializer.toJson<double>(totalCost),
+      'odometer': serializer.toJson<double>(odometer),
+      'fuelType': serializer.toJson<String>(fuelType),
+      'stationName': serializer.toJson<String?>(stationName),
+      'latitude': serializer.toJson<double>(latitude),
+      'longitude': serializer.toJson<double>(longitude),
+      'recordedAt': serializer.toJson<DateTime>(recordedAt),
+      'receiptPhotoPath': serializer.toJson<String>(receiptPhotoPath),
+      'odometerPhotoPath': serializer.toJson<String>(odometerPhotoPath),
+      'createdAtDevice': serializer.toJson<DateTime>(createdAtDevice),
+      'syncStatus': serializer.toJson<SyncStatus>(syncStatus),
+      'retryCount': serializer.toJson<int>(retryCount),
+      'lastError': serializer.toJson<String?>(lastError),
+      'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
+    };
+  }
+
+  PendingFuelRecord copyWith(
+          {int? id,
+          String? clientEventId,
+          String? vehicleId,
+          double? liters,
+          double? totalCost,
+          double? odometer,
+          String? fuelType,
+          Value<String?> stationName = const Value.absent(),
+          double? latitude,
+          double? longitude,
+          DateTime? recordedAt,
+          String? receiptPhotoPath,
+          String? odometerPhotoPath,
+          DateTime? createdAtDevice,
+          SyncStatus? syncStatus,
+          int? retryCount,
+          Value<String?> lastError = const Value.absent(),
+          Value<DateTime?> nextRetryAt = const Value.absent()}) =>
+      PendingFuelRecord(
+        id: id ?? this.id,
+        clientEventId: clientEventId ?? this.clientEventId,
+        vehicleId: vehicleId ?? this.vehicleId,
+        liters: liters ?? this.liters,
+        totalCost: totalCost ?? this.totalCost,
+        odometer: odometer ?? this.odometer,
+        fuelType: fuelType ?? this.fuelType,
+        stationName: stationName.present ? stationName.value : this.stationName,
+        latitude: latitude ?? this.latitude,
+        longitude: longitude ?? this.longitude,
+        recordedAt: recordedAt ?? this.recordedAt,
+        receiptPhotoPath: receiptPhotoPath ?? this.receiptPhotoPath,
+        odometerPhotoPath: odometerPhotoPath ?? this.odometerPhotoPath,
+        createdAtDevice: createdAtDevice ?? this.createdAtDevice,
+        syncStatus: syncStatus ?? this.syncStatus,
+        retryCount: retryCount ?? this.retryCount,
+        lastError: lastError.present ? lastError.value : this.lastError,
+        nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
+      );
+  PendingFuelRecord copyWithCompanion(PendingFuelRecordsCompanion data) {
+    return PendingFuelRecord(
+      id: data.id.present ? data.id.value : this.id,
+      clientEventId: data.clientEventId.present
+          ? data.clientEventId.value
+          : this.clientEventId,
+      vehicleId: data.vehicleId.present ? data.vehicleId.value : this.vehicleId,
+      liters: data.liters.present ? data.liters.value : this.liters,
+      totalCost: data.totalCost.present ? data.totalCost.value : this.totalCost,
+      odometer: data.odometer.present ? data.odometer.value : this.odometer,
+      fuelType: data.fuelType.present ? data.fuelType.value : this.fuelType,
+      stationName:
+          data.stationName.present ? data.stationName.value : this.stationName,
+      latitude: data.latitude.present ? data.latitude.value : this.latitude,
+      longitude: data.longitude.present ? data.longitude.value : this.longitude,
+      recordedAt:
+          data.recordedAt.present ? data.recordedAt.value : this.recordedAt,
+      receiptPhotoPath: data.receiptPhotoPath.present
+          ? data.receiptPhotoPath.value
+          : this.receiptPhotoPath,
+      odometerPhotoPath: data.odometerPhotoPath.present
+          ? data.odometerPhotoPath.value
+          : this.odometerPhotoPath,
+      createdAtDevice: data.createdAtDevice.present
+          ? data.createdAtDevice.value
+          : this.createdAtDevice,
+      syncStatus:
+          data.syncStatus.present ? data.syncStatus.value : this.syncStatus,
+      retryCount:
+          data.retryCount.present ? data.retryCount.value : this.retryCount,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      nextRetryAt:
+          data.nextRetryAt.present ? data.nextRetryAt.value : this.nextRetryAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingFuelRecord(')
+          ..write('id: $id, ')
+          ..write('clientEventId: $clientEventId, ')
+          ..write('vehicleId: $vehicleId, ')
+          ..write('liters: $liters, ')
+          ..write('totalCost: $totalCost, ')
+          ..write('odometer: $odometer, ')
+          ..write('fuelType: $fuelType, ')
+          ..write('stationName: $stationName, ')
+          ..write('latitude: $latitude, ')
+          ..write('longitude: $longitude, ')
+          ..write('recordedAt: $recordedAt, ')
+          ..write('receiptPhotoPath: $receiptPhotoPath, ')
+          ..write('odometerPhotoPath: $odometerPhotoPath, ')
+          ..write('createdAtDevice: $createdAtDevice, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('lastError: $lastError, ')
+          ..write('nextRetryAt: $nextRetryAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      clientEventId,
+      vehicleId,
+      liters,
+      totalCost,
+      odometer,
+      fuelType,
+      stationName,
+      latitude,
+      longitude,
+      recordedAt,
+      receiptPhotoPath,
+      odometerPhotoPath,
+      createdAtDevice,
+      syncStatus,
+      retryCount,
+      lastError,
+      nextRetryAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PendingFuelRecord &&
+          other.id == this.id &&
+          other.clientEventId == this.clientEventId &&
+          other.vehicleId == this.vehicleId &&
+          other.liters == this.liters &&
+          other.totalCost == this.totalCost &&
+          other.odometer == this.odometer &&
+          other.fuelType == this.fuelType &&
+          other.stationName == this.stationName &&
+          other.latitude == this.latitude &&
+          other.longitude == this.longitude &&
+          other.recordedAt == this.recordedAt &&
+          other.receiptPhotoPath == this.receiptPhotoPath &&
+          other.odometerPhotoPath == this.odometerPhotoPath &&
+          other.createdAtDevice == this.createdAtDevice &&
+          other.syncStatus == this.syncStatus &&
+          other.retryCount == this.retryCount &&
+          other.lastError == this.lastError &&
+          other.nextRetryAt == this.nextRetryAt);
+}
+
+class PendingFuelRecordsCompanion extends UpdateCompanion<PendingFuelRecord> {
+  final Value<int> id;
+  final Value<String> clientEventId;
+  final Value<String> vehicleId;
+  final Value<double> liters;
+  final Value<double> totalCost;
+  final Value<double> odometer;
+  final Value<String> fuelType;
+  final Value<String?> stationName;
+  final Value<double> latitude;
+  final Value<double> longitude;
+  final Value<DateTime> recordedAt;
+  final Value<String> receiptPhotoPath;
+  final Value<String> odometerPhotoPath;
+  final Value<DateTime> createdAtDevice;
+  final Value<SyncStatus> syncStatus;
+  final Value<int> retryCount;
+  final Value<String?> lastError;
+  final Value<DateTime?> nextRetryAt;
+  const PendingFuelRecordsCompanion({
+    this.id = const Value.absent(),
+    this.clientEventId = const Value.absent(),
+    this.vehicleId = const Value.absent(),
+    this.liters = const Value.absent(),
+    this.totalCost = const Value.absent(),
+    this.odometer = const Value.absent(),
+    this.fuelType = const Value.absent(),
+    this.stationName = const Value.absent(),
+    this.latitude = const Value.absent(),
+    this.longitude = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+    this.receiptPhotoPath = const Value.absent(),
+    this.odometerPhotoPath = const Value.absent(),
+    this.createdAtDevice = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+  });
+  PendingFuelRecordsCompanion.insert({
+    this.id = const Value.absent(),
+    required String clientEventId,
+    required String vehicleId,
+    required double liters,
+    required double totalCost,
+    required double odometer,
+    required String fuelType,
+    this.stationName = const Value.absent(),
+    required double latitude,
+    required double longitude,
+    required DateTime recordedAt,
+    required String receiptPhotoPath,
+    required String odometerPhotoPath,
+    this.createdAtDevice = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+  })  : clientEventId = Value(clientEventId),
+        vehicleId = Value(vehicleId),
+        liters = Value(liters),
+        totalCost = Value(totalCost),
+        odometer = Value(odometer),
+        fuelType = Value(fuelType),
+        latitude = Value(latitude),
+        longitude = Value(longitude),
+        recordedAt = Value(recordedAt),
+        receiptPhotoPath = Value(receiptPhotoPath),
+        odometerPhotoPath = Value(odometerPhotoPath);
+  static Insertable<PendingFuelRecord> custom({
+    Expression<int>? id,
+    Expression<String>? clientEventId,
+    Expression<String>? vehicleId,
+    Expression<double>? liters,
+    Expression<double>? totalCost,
+    Expression<double>? odometer,
+    Expression<String>? fuelType,
+    Expression<String>? stationName,
+    Expression<double>? latitude,
+    Expression<double>? longitude,
+    Expression<DateTime>? recordedAt,
+    Expression<String>? receiptPhotoPath,
+    Expression<String>? odometerPhotoPath,
+    Expression<DateTime>? createdAtDevice,
+    Expression<String>? syncStatus,
+    Expression<int>? retryCount,
+    Expression<String>? lastError,
+    Expression<DateTime>? nextRetryAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (clientEventId != null) 'client_event_id': clientEventId,
+      if (vehicleId != null) 'vehicle_id': vehicleId,
+      if (liters != null) 'liters': liters,
+      if (totalCost != null) 'total_cost': totalCost,
+      if (odometer != null) 'odometer': odometer,
+      if (fuelType != null) 'fuel_type': fuelType,
+      if (stationName != null) 'station_name': stationName,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+      if (receiptPhotoPath != null) 'receipt_photo_path': receiptPhotoPath,
+      if (odometerPhotoPath != null) 'odometer_photo_path': odometerPhotoPath,
+      if (createdAtDevice != null) 'created_at_device': createdAtDevice,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (retryCount != null) 'retry_count': retryCount,
+      if (lastError != null) 'last_error': lastError,
+      if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
+    });
+  }
+
+  PendingFuelRecordsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? clientEventId,
+      Value<String>? vehicleId,
+      Value<double>? liters,
+      Value<double>? totalCost,
+      Value<double>? odometer,
+      Value<String>? fuelType,
+      Value<String?>? stationName,
+      Value<double>? latitude,
+      Value<double>? longitude,
+      Value<DateTime>? recordedAt,
+      Value<String>? receiptPhotoPath,
+      Value<String>? odometerPhotoPath,
+      Value<DateTime>? createdAtDevice,
+      Value<SyncStatus>? syncStatus,
+      Value<int>? retryCount,
+      Value<String?>? lastError,
+      Value<DateTime?>? nextRetryAt}) {
+    return PendingFuelRecordsCompanion(
+      id: id ?? this.id,
+      clientEventId: clientEventId ?? this.clientEventId,
+      vehicleId: vehicleId ?? this.vehicleId,
+      liters: liters ?? this.liters,
+      totalCost: totalCost ?? this.totalCost,
+      odometer: odometer ?? this.odometer,
+      fuelType: fuelType ?? this.fuelType,
+      stationName: stationName ?? this.stationName,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      recordedAt: recordedAt ?? this.recordedAt,
+      receiptPhotoPath: receiptPhotoPath ?? this.receiptPhotoPath,
+      odometerPhotoPath: odometerPhotoPath ?? this.odometerPhotoPath,
+      createdAtDevice: createdAtDevice ?? this.createdAtDevice,
+      syncStatus: syncStatus ?? this.syncStatus,
+      retryCount: retryCount ?? this.retryCount,
+      lastError: lastError ?? this.lastError,
+      nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (clientEventId.present) {
+      map['client_event_id'] = Variable<String>(clientEventId.value);
+    }
+    if (vehicleId.present) {
+      map['vehicle_id'] = Variable<String>(vehicleId.value);
+    }
+    if (liters.present) {
+      map['liters'] = Variable<double>(liters.value);
+    }
+    if (totalCost.present) {
+      map['total_cost'] = Variable<double>(totalCost.value);
+    }
+    if (odometer.present) {
+      map['odometer'] = Variable<double>(odometer.value);
+    }
+    if (fuelType.present) {
+      map['fuel_type'] = Variable<String>(fuelType.value);
+    }
+    if (stationName.present) {
+      map['station_name'] = Variable<String>(stationName.value);
+    }
+    if (latitude.present) {
+      map['latitude'] = Variable<double>(latitude.value);
+    }
+    if (longitude.present) {
+      map['longitude'] = Variable<double>(longitude.value);
+    }
+    if (recordedAt.present) {
+      map['recorded_at'] = Variable<DateTime>(recordedAt.value);
+    }
+    if (receiptPhotoPath.present) {
+      map['receipt_photo_path'] = Variable<String>(receiptPhotoPath.value);
+    }
+    if (odometerPhotoPath.present) {
+      map['odometer_photo_path'] = Variable<String>(odometerPhotoPath.value);
+    }
+    if (createdAtDevice.present) {
+      map['created_at_device'] = Variable<DateTime>(createdAtDevice.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<String>($PendingFuelRecordsTable
+          .$convertersyncStatus
+          .toSql(syncStatus.value));
+    }
+    if (retryCount.present) {
+      map['retry_count'] = Variable<int>(retryCount.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (nextRetryAt.present) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingFuelRecordsCompanion(')
+          ..write('id: $id, ')
+          ..write('clientEventId: $clientEventId, ')
+          ..write('vehicleId: $vehicleId, ')
+          ..write('liters: $liters, ')
+          ..write('totalCost: $totalCost, ')
+          ..write('odometer: $odometer, ')
+          ..write('fuelType: $fuelType, ')
+          ..write('stationName: $stationName, ')
+          ..write('latitude: $latitude, ')
+          ..write('longitude: $longitude, ')
+          ..write('recordedAt: $recordedAt, ')
+          ..write('receiptPhotoPath: $receiptPhotoPath, ')
+          ..write('odometerPhotoPath: $odometerPhotoPath, ')
+          ..write('createdAtDevice: $createdAtDevice, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('lastError: $lastError, ')
+          ..write('nextRetryAt: $nextRetryAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $TodayMissionsCacheTable extends TodayMissionsCache
     with TableInfo<$TodayMissionsCacheTable, TodayMissionsCacheData> {
   @override
@@ -1788,14 +2646,20 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $PendingGpsPositionsTable(this);
   late final $PendingValidationsTable pendingValidations =
       $PendingValidationsTable(this);
+  late final $PendingFuelRecordsTable pendingFuelRecords =
+      $PendingFuelRecordsTable(this);
   late final $TodayMissionsCacheTable todayMissionsCache =
       $TodayMissionsCacheTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [pendingGpsPositions, pendingValidations, todayMissionsCache];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+        pendingGpsPositions,
+        pendingValidations,
+        pendingFuelRecords,
+        todayMissionsCache
+      ];
 }
 
 typedef $$PendingGpsPositionsTableCreateCompanionBuilder
@@ -2492,6 +3356,385 @@ typedef $$PendingValidationsTableProcessedTableManager = ProcessedTableManager<
     ),
     PendingValidation,
     PrefetchHooks Function()>;
+typedef $$PendingFuelRecordsTableCreateCompanionBuilder
+    = PendingFuelRecordsCompanion Function({
+  Value<int> id,
+  required String clientEventId,
+  required String vehicleId,
+  required double liters,
+  required double totalCost,
+  required double odometer,
+  required String fuelType,
+  Value<String?> stationName,
+  required double latitude,
+  required double longitude,
+  required DateTime recordedAt,
+  required String receiptPhotoPath,
+  required String odometerPhotoPath,
+  Value<DateTime> createdAtDevice,
+  Value<SyncStatus> syncStatus,
+  Value<int> retryCount,
+  Value<String?> lastError,
+  Value<DateTime?> nextRetryAt,
+});
+typedef $$PendingFuelRecordsTableUpdateCompanionBuilder
+    = PendingFuelRecordsCompanion Function({
+  Value<int> id,
+  Value<String> clientEventId,
+  Value<String> vehicleId,
+  Value<double> liters,
+  Value<double> totalCost,
+  Value<double> odometer,
+  Value<String> fuelType,
+  Value<String?> stationName,
+  Value<double> latitude,
+  Value<double> longitude,
+  Value<DateTime> recordedAt,
+  Value<String> receiptPhotoPath,
+  Value<String> odometerPhotoPath,
+  Value<DateTime> createdAtDevice,
+  Value<SyncStatus> syncStatus,
+  Value<int> retryCount,
+  Value<String?> lastError,
+  Value<DateTime?> nextRetryAt,
+});
+
+class $$PendingFuelRecordsTableFilterComposer
+    extends Composer<_$AppDatabase, $PendingFuelRecordsTable> {
+  $$PendingFuelRecordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get clientEventId => $composableBuilder(
+      column: $table.clientEventId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get vehicleId => $composableBuilder(
+      column: $table.vehicleId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get liters => $composableBuilder(
+      column: $table.liters, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get totalCost => $composableBuilder(
+      column: $table.totalCost, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get odometer => $composableBuilder(
+      column: $table.odometer, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get fuelType => $composableBuilder(
+      column: $table.fuelType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get stationName => $composableBuilder(
+      column: $table.stationName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get latitude => $composableBuilder(
+      column: $table.latitude, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get longitude => $composableBuilder(
+      column: $table.longitude, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get recordedAt => $composableBuilder(
+      column: $table.recordedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get receiptPhotoPath => $composableBuilder(
+      column: $table.receiptPhotoPath,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get odometerPhotoPath => $composableBuilder(
+      column: $table.odometerPhotoPath,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAtDevice => $composableBuilder(
+      column: $table.createdAtDevice,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnWithTypeConverterFilters<SyncStatus, SyncStatus, String>
+      get syncStatus => $composableBuilder(
+          column: $table.syncStatus,
+          builder: (column) => ColumnWithTypeConverterFilters(column));
+
+  ColumnFilters<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$PendingFuelRecordsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PendingFuelRecordsTable> {
+  $$PendingFuelRecordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get clientEventId => $composableBuilder(
+      column: $table.clientEventId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get vehicleId => $composableBuilder(
+      column: $table.vehicleId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get liters => $composableBuilder(
+      column: $table.liters, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get totalCost => $composableBuilder(
+      column: $table.totalCost, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get odometer => $composableBuilder(
+      column: $table.odometer, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get fuelType => $composableBuilder(
+      column: $table.fuelType, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get stationName => $composableBuilder(
+      column: $table.stationName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get latitude => $composableBuilder(
+      column: $table.latitude, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get longitude => $composableBuilder(
+      column: $table.longitude, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get recordedAt => $composableBuilder(
+      column: $table.recordedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get receiptPhotoPath => $composableBuilder(
+      column: $table.receiptPhotoPath,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get odometerPhotoPath => $composableBuilder(
+      column: $table.odometerPhotoPath,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAtDevice => $composableBuilder(
+      column: $table.createdAtDevice,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get syncStatus => $composableBuilder(
+      column: $table.syncStatus, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$PendingFuelRecordsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PendingFuelRecordsTable> {
+  $$PendingFuelRecordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get clientEventId => $composableBuilder(
+      column: $table.clientEventId, builder: (column) => column);
+
+  GeneratedColumn<String> get vehicleId =>
+      $composableBuilder(column: $table.vehicleId, builder: (column) => column);
+
+  GeneratedColumn<double> get liters =>
+      $composableBuilder(column: $table.liters, builder: (column) => column);
+
+  GeneratedColumn<double> get totalCost =>
+      $composableBuilder(column: $table.totalCost, builder: (column) => column);
+
+  GeneratedColumn<double> get odometer =>
+      $composableBuilder(column: $table.odometer, builder: (column) => column);
+
+  GeneratedColumn<String> get fuelType =>
+      $composableBuilder(column: $table.fuelType, builder: (column) => column);
+
+  GeneratedColumn<String> get stationName => $composableBuilder(
+      column: $table.stationName, builder: (column) => column);
+
+  GeneratedColumn<double> get latitude =>
+      $composableBuilder(column: $table.latitude, builder: (column) => column);
+
+  GeneratedColumn<double> get longitude =>
+      $composableBuilder(column: $table.longitude, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get recordedAt => $composableBuilder(
+      column: $table.recordedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get receiptPhotoPath => $composableBuilder(
+      column: $table.receiptPhotoPath, builder: (column) => column);
+
+  GeneratedColumn<String> get odometerPhotoPath => $composableBuilder(
+      column: $table.odometerPhotoPath, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAtDevice => $composableBuilder(
+      column: $table.createdAtDevice, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<SyncStatus, String> get syncStatus =>
+      $composableBuilder(
+          column: $table.syncStatus, builder: (column) => column);
+
+  GeneratedColumn<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => column);
+}
+
+class $$PendingFuelRecordsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $PendingFuelRecordsTable,
+    PendingFuelRecord,
+    $$PendingFuelRecordsTableFilterComposer,
+    $$PendingFuelRecordsTableOrderingComposer,
+    $$PendingFuelRecordsTableAnnotationComposer,
+    $$PendingFuelRecordsTableCreateCompanionBuilder,
+    $$PendingFuelRecordsTableUpdateCompanionBuilder,
+    (
+      PendingFuelRecord,
+      BaseReferences<_$AppDatabase, $PendingFuelRecordsTable, PendingFuelRecord>
+    ),
+    PendingFuelRecord,
+    PrefetchHooks Function()> {
+  $$PendingFuelRecordsTableTableManager(
+      _$AppDatabase db, $PendingFuelRecordsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PendingFuelRecordsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PendingFuelRecordsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PendingFuelRecordsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> clientEventId = const Value.absent(),
+            Value<String> vehicleId = const Value.absent(),
+            Value<double> liters = const Value.absent(),
+            Value<double> totalCost = const Value.absent(),
+            Value<double> odometer = const Value.absent(),
+            Value<String> fuelType = const Value.absent(),
+            Value<String?> stationName = const Value.absent(),
+            Value<double> latitude = const Value.absent(),
+            Value<double> longitude = const Value.absent(),
+            Value<DateTime> recordedAt = const Value.absent(),
+            Value<String> receiptPhotoPath = const Value.absent(),
+            Value<String> odometerPhotoPath = const Value.absent(),
+            Value<DateTime> createdAtDevice = const Value.absent(),
+            Value<SyncStatus> syncStatus = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
+            Value<DateTime?> nextRetryAt = const Value.absent(),
+          }) =>
+              PendingFuelRecordsCompanion(
+            id: id,
+            clientEventId: clientEventId,
+            vehicleId: vehicleId,
+            liters: liters,
+            totalCost: totalCost,
+            odometer: odometer,
+            fuelType: fuelType,
+            stationName: stationName,
+            latitude: latitude,
+            longitude: longitude,
+            recordedAt: recordedAt,
+            receiptPhotoPath: receiptPhotoPath,
+            odometerPhotoPath: odometerPhotoPath,
+            createdAtDevice: createdAtDevice,
+            syncStatus: syncStatus,
+            retryCount: retryCount,
+            lastError: lastError,
+            nextRetryAt: nextRetryAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String clientEventId,
+            required String vehicleId,
+            required double liters,
+            required double totalCost,
+            required double odometer,
+            required String fuelType,
+            Value<String?> stationName = const Value.absent(),
+            required double latitude,
+            required double longitude,
+            required DateTime recordedAt,
+            required String receiptPhotoPath,
+            required String odometerPhotoPath,
+            Value<DateTime> createdAtDevice = const Value.absent(),
+            Value<SyncStatus> syncStatus = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
+            Value<DateTime?> nextRetryAt = const Value.absent(),
+          }) =>
+              PendingFuelRecordsCompanion.insert(
+            id: id,
+            clientEventId: clientEventId,
+            vehicleId: vehicleId,
+            liters: liters,
+            totalCost: totalCost,
+            odometer: odometer,
+            fuelType: fuelType,
+            stationName: stationName,
+            latitude: latitude,
+            longitude: longitude,
+            recordedAt: recordedAt,
+            receiptPhotoPath: receiptPhotoPath,
+            odometerPhotoPath: odometerPhotoPath,
+            createdAtDevice: createdAtDevice,
+            syncStatus: syncStatus,
+            retryCount: retryCount,
+            lastError: lastError,
+            nextRetryAt: nextRetryAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$PendingFuelRecordsTable, PendingFuelRecord>(
+                        table),
+                    BaseReferences<_$AppDatabase, $PendingFuelRecordsTable,
+                        PendingFuelRecord>(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$PendingFuelRecordsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $PendingFuelRecordsTable,
+    PendingFuelRecord,
+    $$PendingFuelRecordsTableFilterComposer,
+    $$PendingFuelRecordsTableOrderingComposer,
+    $$PendingFuelRecordsTableAnnotationComposer,
+    $$PendingFuelRecordsTableCreateCompanionBuilder,
+    $$PendingFuelRecordsTableUpdateCompanionBuilder,
+    (
+      PendingFuelRecord,
+      BaseReferences<_$AppDatabase, $PendingFuelRecordsTable, PendingFuelRecord>
+    ),
+    PendingFuelRecord,
+    PrefetchHooks Function()>;
 typedef $$TodayMissionsCacheTableCreateCompanionBuilder
     = TodayMissionsCacheCompanion Function({
   Value<int> id,
@@ -2647,6 +3890,8 @@ class $AppDatabaseManager {
       $$PendingGpsPositionsTableTableManager(_db, _db.pendingGpsPositions);
   $$PendingValidationsTableTableManager get pendingValidations =>
       $$PendingValidationsTableTableManager(_db, _db.pendingValidations);
+  $$PendingFuelRecordsTableTableManager get pendingFuelRecords =>
+      $$PendingFuelRecordsTableTableManager(_db, _db.pendingFuelRecords);
   $$TodayMissionsCacheTableTableManager get todayMissionsCache =>
       $$TodayMissionsCacheTableTableManager(_db, _db.todayMissionsCache);
 }

@@ -5,6 +5,7 @@ import '../../../core/sync/sync_providers.dart';
 import '../../../core/sync/sync_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/big_button.dart';
+import '../../fuel/application/fuel_flow_notifier.dart';
 import '../../qr/application/qr_flow_notifier.dart';
 import '../../tracking/application/tracking_providers.dart';
 
@@ -38,8 +39,12 @@ class _PendingSyncScreenState extends ConsumerState<PendingSyncScreen> {
         ref.watch(pendingValidationsCountProvider).valueOrNull ?? 0;
     final validationsFailed =
         ref.watch(validationsFailedCountProvider).valueOrNull ?? 0;
+    final fuelPending =
+        ref.watch(pendingFuelRecordsCountProvider).valueOrNull ?? 0;
+    final fuelFailed =
+        ref.watch(fuelRecordsFailedCountProvider).valueOrNull ?? 0;
 
-    final total = gpsPending + validationsPending;
+    final total = gpsPending + validationsPending + fuelPending;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Synchronisations en attente')),
@@ -66,6 +71,13 @@ class _PendingSyncScreenState extends ConsumerState<PendingSyncScreen> {
                 label: "Validations d'étape",
                 pendingCount: validationsPending,
                 failedCount: validationsFailed,
+              ),
+              const SizedBox(height: 12),
+              _QueueTile(
+                icon: Icons.local_gas_station_outlined,
+                label: 'Déclarations de plein',
+                pendingCount: fuelPending,
+                failedCount: fuelFailed,
               ),
               const Spacer(),
               Text(

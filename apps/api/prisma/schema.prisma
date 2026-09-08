@@ -588,6 +588,8 @@ model Alert {
   level     AlertLevel
   status    AlertStatus @default(NEW)
   score     Int         @default(0)
+  /// Explication du score (section 15 : "score de suspicion explicable") — tableau [{reason, points}].
+  scoreBreakdown Json?
   message   String?
   vehicleId String?
   driverId  String?

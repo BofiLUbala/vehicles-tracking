@@ -63,4 +63,6 @@ export const apiClient = {
     requestWithAuth<T>(http, { ...config, url, method: 'GET' }),
   post: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
     requestWithAuth<T>(http, { ...config, url, method: 'POST', data }),
+  patch: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+    requestWithAuth<T>(http, { ...config, url, method: 'PATCH', data }),
 };

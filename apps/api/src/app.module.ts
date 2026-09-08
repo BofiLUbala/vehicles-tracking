@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { HealthController } from './health.controller';
@@ -17,10 +18,13 @@ import { FilesModule } from './files/files.module';
 import { MissionsModule } from './missions/missions.module';
 import { MissionStepsModule } from './mission-steps/mission-steps.module';
 import { TrackingModule } from './tracking/tracking.module';
+import { FuelModule } from './fuel/fuel.module';
+import { AlertsModule } from './alerts/alerts.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     CommonModule,
     AuthModule,
@@ -33,6 +37,8 @@ import { TrackingModule } from './tracking/tracking.module';
     MissionsModule,
     MissionStepsModule,
     TrackingModule,
+    FuelModule,
+    AlertsModule,
   ],
   controllers: [HealthController],
   providers: [

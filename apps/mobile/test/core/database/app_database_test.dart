@@ -91,6 +91,65 @@ void main() {
     });
   });
 
+  group('PendingFuelRecords round-trip', () {
+    test('insert then read back preserves all fields', () async {
+      final recordedAt = DateTime.utc(2026, 9, 8, 12, 0, 0);
+      await db.into(db.pendingFuelRecords).insert(
+            PendingFuelRecordsCompanion.insert(
+              clientEventId: 'evt-f1',
+              vehicleId: 'veh-1',
+              liters: 45.5,
+              totalCost: 65000,
+              odometer: 128900,
+              fuelType: 'DIESEL',
+              stationName: const Value('Total Boulevard'),
+              latitude: -4.3,
+              longitude: 15.3,
+              recordedAt: recordedAt,
+              receiptPhotoPath: '/tmp/receipt.jpg',
+              odometerPhotoPath: '/tmp/odometer.jpg',
+            ),
+          );
+
+      final rows = await db.select(db.pendingFuelRecords).get();
+      expect(rows, hasLength(1));
+      final row = rows.single;
+      expect(row.clientEventId, 'evt-f1');
+      expect(row.vehicleId, 'veh-1');
+      expect(row.liters, 45.5);
+      expect(row.totalCost, 65000);
+      expect(row.odometer, 128900);
+      expect(row.fuelType, 'DIESEL');
+      expect(row.stationName, 'Total Boulevard');
+      expect(row.receiptPhotoPath, '/tmp/receipt.jpg');
+      expect(row.odometerPhotoPath, '/tmp/odometer.jpg');
+      expect(row.recordedAt.isAtSameMomentAs(recordedAt), isTrue);
+      expect(row.syncStatus, SyncStatus.pending);
+      expect(row.retryCount, 0);
+    });
+
+    test('clientEventId is unique — a duplicate insert fails', () async {
+      final companion = PendingFuelRecordsCompanion.insert(
+        clientEventId: 'evt-f-dup',
+        vehicleId: 'veh-1',
+        liters: 10,
+        totalCost: 15000,
+        odometer: 1000,
+        fuelType: 'PETROL',
+        latitude: 0,
+        longitude: 0,
+        recordedAt: DateTime.utc(2026, 1, 1),
+        receiptPhotoPath: '/tmp/r.jpg',
+        odometerPhotoPath: '/tmp/o.jpg',
+      );
+      await db.into(db.pendingFuelRecords).insert(companion);
+      expect(
+        () => db.into(db.pendingFuelRecords).insert(companion),
+        throwsA(anything),
+      );
+    });
+  });
+
   test('SyncStatusConverter round-trips every enum value', () async {
     const converter = SyncStatusConverter();
     for (final status in SyncStatus.values) {

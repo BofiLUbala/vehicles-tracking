@@ -28,6 +28,11 @@ class MissionsListScreen extends ConsumerWidget {
             child: Center(child: ConnectivityPill()),
           ),
           IconButton(
+            icon: const Icon(Icons.local_gas_station_outlined),
+            tooltip: 'Déclarer un plein',
+            onPressed: () => context.push('/fuel'),
+          ),
+          IconButton(
             icon: const Icon(Icons.history),
             tooltip: 'Historique',
             onPressed: () => context.push('/history'),

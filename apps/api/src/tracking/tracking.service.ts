@@ -7,9 +7,11 @@ import { CreatePositionDto } from './dto/create-position.dto';
 import { QueryTraceDto } from './dto/query-trace.dto';
 import { haversineDistanceMeters } from '../common/geo.util';
 import { wrongDriverPositionError } from './tracking.errors';
+import { ALERT_SCORE_POINTS, buildAlertScore } from '../common/alert-score.util';
 
 const DEFAULT_MAX_PLAUSIBLE_SPEED_KMH = 150;
 const DEFAULT_OFFLINE_THRESHOLD_MINUTES = 5;
+const DEFAULT_MAX_GPS_ACCURACY_METERS = 100;
 /** Vitesse (km/h) en-dessous de laquelle un véhicule "vu récemment" est considéré STOPPED plutôt que MOVING. */
 const MOVING_SPEED_THRESHOLD_KMH = 3;
 /** Fenêtre (minutes) pendant laquelle une alerte IMPOSSIBLE_SPEED/MOCK_GPS récente rend un véhicule SUSPICIOUS sur /live. */
@@ -45,6 +47,11 @@ export class TrackingService {
   private offlineThresholdMinutes(): number {
     const configured = Number(this.config.get<string>('VEHICLE_OFFLINE_THRESHOLD_MINUTES'));
     return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_OFFLINE_THRESHOLD_MINUTES;
+  }
+
+  private maxGpsAccuracyMeters(): number {
+    const configured = Number(this.config.get<string>('MAX_GPS_ACCURACY_METERS'));
+    return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MAX_GPS_ACCURACY_METERS;
   }
 
   /**
@@ -149,11 +156,47 @@ export class TrackingService {
 
     // isMocked=true : accepté quand même, Alert basse sévérité (non bloquant).
     if (dto.isMocked) {
+      const { score, breakdown } = buildAlertScore([
+        { reason: 'Position GPS simulée (mock location) signalée par le device', points: ALERT_SCORE_POINTS.MOCK_GPS },
+      ]);
       const alert = await this.prisma.alert.create({
         data: {
           type: AlertType.MOCK_GPS,
           level: AlertLevel.LOW,
+          score,
+          scoreBreakdown: breakdown as unknown as Prisma.InputJsonValue,
           message: 'Position GPS potentiellement simulée (mock location) signalée par le device',
+          driverId,
+          vehicleId: dto.vehicleId,
+          missionId: dto.missionId,
+        },
+      });
+      this.realtime.emitAlertCreated({
+        organizationId,
+        alertId: alert.id,
+        type: alert.type,
+        level: alert.level,
+        vehicleId: dto.vehicleId,
+        driverId,
+        missionId: dto.missionId,
+      });
+    }
+
+    // Précision GPS insuffisante : jamais bloquant côté ingestion de positions (contrairement à
+    // MissionStepsService qui, lui, rejette la validation d'étape) — juste une Alert basse sévérité
+    // et explicable. Type AlertType.OTHER : aucune valeur d'enum dédiée n'existe pour ce cas.
+    const maxAccuracy = this.maxGpsAccuracyMeters();
+    if (typeof dto.accuracy === 'number' && dto.accuracy > maxAccuracy) {
+      const { score, breakdown } = buildAlertScore([
+        { reason: `Précision GPS insuffisante : ${dto.accuracy}m (seuil ${maxAccuracy}m)`, points: ALERT_SCORE_POINTS.LOW_GPS_ACCURACY },
+      ]);
+      const alert = await this.prisma.alert.create({
+        data: {
+          type: AlertType.OTHER,
+          level: AlertLevel.LOW,
+          score,
+          scoreBreakdown: breakdown as unknown as Prisma.InputJsonValue,
+          message: `Précision GPS insuffisante : ${dto.accuracy}m (seuil ${maxAccuracy}m)`,
           driverId,
           vehicleId: dto.vehicleId,
           missionId: dto.missionId,
@@ -178,10 +221,18 @@ export class TrackingService {
         const impliedSpeedKmh = (distanceMeters / 1000) / (deltaSeconds / 3600);
         const maxSpeed = this.maxPlausibleSpeedKmh();
         if (impliedSpeedKmh > maxSpeed) {
+          const { score, breakdown } = buildAlertScore([
+            {
+              reason: `Saut géographique impossible : ${impliedSpeedKmh.toFixed(1)} km/h implicite (seuil ${maxSpeed} km/h)`,
+              points: ALERT_SCORE_POINTS.SPEEDING,
+            },
+          ]);
           const alert = await this.prisma.alert.create({
             data: {
               type: AlertType.SPEEDING,
               level: AlertLevel.MEDIUM,
+              score,
+              scoreBreakdown: breakdown as unknown as Prisma.InputJsonValue,
               message: `Vitesse implicite impossible : ${impliedSpeedKmh.toFixed(1)} km/h entre deux positions successives (seuil ${maxSpeed} km/h)`,
               driverId,
               vehicleId: dto.vehicleId,

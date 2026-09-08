@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 
+import '../../features/fuel/data/fuel_queue_repository.dart';
+import '../../features/fuel/data/fuel_repository.dart';
+import '../../features/fuel/data/models/fuel_type.dart';
 import '../../features/qr/data/validation_queue_repository.dart';
 import '../../features/qr/data/validation_repository.dart';
 import '../../features/tracking/data/gps_queue_repository.dart';
@@ -28,21 +31,28 @@ class SyncService {
     required ValidationQueueRepository validationQueueRepository,
     required TrackingRepository trackingRepository,
     required ValidationRepository validationRepository,
+    required FuelQueueRepository fuelQueueRepository,
+    required FuelRepository fuelRepository,
     Connectivity? connectivity,
   })  : _gpsQueueRepository = gpsQueueRepository,
         _validationQueueRepository = validationQueueRepository,
         _trackingRepository = trackingRepository,
         _validationRepository = validationRepository,
+        _fuelQueueRepository = fuelQueueRepository,
+        _fuelRepository = fuelRepository,
         _connectivity = connectivity ?? Connectivity();
 
   final GpsQueueRepository _gpsQueueRepository;
   final ValidationQueueRepository _validationQueueRepository;
   final TrackingRepository _trackingRepository;
   final ValidationRepository _validationRepository;
+  final FuelQueueRepository _fuelQueueRepository;
+  final FuelRepository _fuelRepository;
   final Connectivity _connectivity;
 
   static const gpsBatchSize = 100;
   static const validationBatchSize = 5;
+  static const fuelBatchSize = 5;
 
   /// Au-delà de ce nombre d'essais automatiques, une ligne n'est plus
   /// retentée par les déclencheurs automatiques (connectivité/minuteur) —
@@ -62,6 +72,7 @@ class SyncService {
   Future<void> init() async {
     await _gpsQueueRepository.resetStaleUploading();
     await _validationQueueRepository.resetStaleUploading();
+    await _fuelQueueRepository.resetStaleUploading();
 
     _connectivitySubscription =
         _connectivity.onConnectivityChanged.listen((results) {
@@ -89,6 +100,7 @@ class SyncService {
     try {
       await _syncGpsPositions(force: force);
       await _syncValidations(force: force);
+      await _syncFuelRecords(force: force);
     } finally {
       _syncing = false;
     }
@@ -191,6 +203,57 @@ class SyncService {
           id: validation.id,
           previousRetryCount: maxAutoRetries,
           error: result.rawMessage ?? result.errorCode ?? 'Validation refusée.',
+        );
+      }
+    }
+  }
+
+  Future<void> _syncFuelRecords({required bool force}) async {
+    final batch = await _fuelQueueRepository.nextBatch(
+      limit: fuelBatchSize,
+      force: force,
+      maxAutoRetries: maxAutoRetries,
+    );
+
+    for (final record in batch) {
+      await _fuelQueueRepository.markUploading(record.id);
+
+      final result = await _fuelRepository.submit(
+        FuelRecordRequest(
+          vehicleId: record.vehicleId,
+          liters: record.liters,
+          totalCost: record.totalCost,
+          odometer: record.odometer,
+          fuelType: FuelType.fromApiValue(record.fuelType),
+          stationName: record.stationName,
+          latitude: record.latitude,
+          longitude: record.longitude,
+          recordedAt: record.recordedAt,
+          receiptPhotoPath: record.receiptPhotoPath,
+          odometerPhotoPath: record.odometerPhotoPath,
+          // Réutilise le même clientEventId à chaque tentative — même
+          // convention d'idempotence que les validations d'étape.
+          clientEventId: record.clientEventId,
+        ),
+      );
+
+      if (result.success) {
+        await _fuelQueueRepository.markSynced(record.id);
+      } else if (result.errorCode == 'NETWORK_ERROR') {
+        // Toujours pas de réseau exploitable : on retente plus tard.
+        await _fuelQueueRepository.markFailed(
+          id: record.id,
+          previousRetryCount: record.retryCount,
+          error: result.rawMessage ?? 'Pas de réseau.',
+        );
+      } else {
+        // Refus métier définitif — la ligne reste visible en `failed` (jamais
+        // supprimée silencieusement) mais n'est plus retentée automatiquement
+        // au-delà du plafond.
+        await _fuelQueueRepository.markFailed(
+          id: record.id,
+          previousRetryCount: maxAutoRetries,
+          error: result.rawMessage ?? result.errorCode ?? 'Déclaration refusée.',
         );
       }
     }

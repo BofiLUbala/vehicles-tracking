@@ -104,6 +104,49 @@ class PendingValidations extends Table {
   DateTimeColumn get nextRetryAt => dateTime().nullable()();
 }
 
+/// File d'attente locale des déclarations de plein de carburant (écran 12,
+/// section 14 du cahier des charges) en attente d'envoi vers
+/// `POST /fuel-records` — alimentée quand la déclaration est tentée hors
+/// ligne, rejouée une par une (multipart, comme les validations d'étape) par
+/// `SyncService` via `FuelRepository`. Voir docs/PHASE4_NOTES.md pour le
+/// contrat exact côté API une fois publié par l'agent backend.
+class PendingFuelRecords extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  TextColumn get clientEventId => text().unique()();
+  TextColumn get vehicleId => text()();
+
+  RealColumn get liters => real()();
+  RealColumn get totalCost => real()();
+  RealColumn get odometer => real()();
+
+  /// Valeur brute de l'enum `FuelType` côté API (DIESEL/PETROL/ELECTRIC/
+  /// OTHER — `apps/api/prisma/schema.prisma`).
+  TextColumn get fuelType => text()();
+  TextColumn get stationName => text().nullable()();
+
+  RealColumn get latitude => real()();
+  RealColumn get longitude => real()();
+
+  DateTimeColumn get recordedAt => dateTime()();
+
+  /// Chemins locaux des deux photos (reçu, compteur) — les fichiers restent
+  /// sur le disque de l'appareil jusqu'à l'envoi multipart réussi.
+  TextColumn get receiptPhotoPath => text()();
+  TextColumn get odometerPhotoPath => text()();
+
+  DateTimeColumn get createdAtDevice =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  TextColumn get syncStatus => text()
+      .map(const SyncStatusConverter())
+      .withDefault(const Constant('pending'))();
+
+  IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  TextColumn get lastError => text().nullable()();
+  DateTimeColumn get nextRetryAt => dateTime().nullable()();
+}
+
 /// Cache brut (un seul blob JSON) de la dernière réponse réussie de
 /// `GET /mobile/missions/today`, pour repli hors-ligne à l'ouverture de
 /// l'app. Volontairement non normalisé en tables Drift : le seul besoin
@@ -119,7 +162,12 @@ class TodayMissionsCache extends Table {
 }
 
 @DriftDatabase(
-  tables: [PendingGpsPositions, PendingValidations, TodayMissionsCache],
+  tables: [
+    PendingGpsPositions,
+    PendingValidations,
+    PendingFuelRecords,
+    TodayMissionsCache,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -128,7 +176,17 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.createTable(pendingFuelRecords);
+          }
+        },
+      );
 }
 
 LazyDatabase _openConnection() {

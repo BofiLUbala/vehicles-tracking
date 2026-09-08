@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:tracking_vehicles_mobile/core/database/app_database.dart';
 import 'package:tracking_vehicles_mobile/core/sync/sync_service.dart';
+import 'package:tracking_vehicles_mobile/features/fuel/data/fuel_queue_repository.dart';
+import 'package:tracking_vehicles_mobile/features/fuel/data/fuel_repository.dart';
+import 'package:tracking_vehicles_mobile/features/fuel/data/models/fuel_record_result.dart';
 import 'package:tracking_vehicles_mobile/features/qr/data/models/validation_result.dart';
 import 'package:tracking_vehicles_mobile/features/qr/data/validation_queue_repository.dart';
 import 'package:tracking_vehicles_mobile/features/qr/data/validation_repository.dart';
@@ -15,7 +18,11 @@ class MockTrackingRepository extends Mock implements TrackingRepository {}
 
 class MockValidationRepository extends Mock implements ValidationRepository {}
 
+class MockFuelRepository extends Mock implements FuelRepository {}
+
 class FakeStepValidationRequest extends Fake implements StepValidationRequest {}
+
+class FakeFuelRecordRequest extends Fake implements FuelRecordRequest {}
 
 /// Évite tout appel de plateforme réel (`connectivity_plus` utilise un
 /// `EventChannel` indisponible dans les tests unitaires) : un flux vide
@@ -30,27 +37,34 @@ void main() {
   late AppDatabase db;
   late GpsQueueRepository gpsQueueRepository;
   late ValidationQueueRepository validationQueueRepository;
+  late FuelQueueRepository fuelQueueRepository;
   late MockTrackingRepository trackingRepository;
   late MockValidationRepository validationRepository;
+  late MockFuelRepository fuelRepository;
   late SyncService syncService;
 
   setUpAll(() {
     registerFallbackValue(<PendingGpsPosition>[]);
     registerFallbackValue(FakeStepValidationRequest());
+    registerFallbackValue(FakeFuelRecordRequest());
   });
 
   setUp(() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     gpsQueueRepository = GpsQueueRepository(database: db);
     validationQueueRepository = ValidationQueueRepository(database: db);
+    fuelQueueRepository = FuelQueueRepository(database: db);
     trackingRepository = MockTrackingRepository();
     validationRepository = MockValidationRepository();
+    fuelRepository = MockFuelRepository();
     syncService = SyncService(
       database: db,
       gpsQueueRepository: gpsQueueRepository,
       validationQueueRepository: validationQueueRepository,
       trackingRepository: trackingRepository,
       validationRepository: validationRepository,
+      fuelQueueRepository: fuelQueueRepository,
+      fuelRepository: fuelRepository,
       connectivity: FakeConnectivity(),
     );
   });
@@ -91,6 +105,30 @@ void main() {
             longitude: 0,
             recordedAt: DateTime.utc(2026, 9, 8),
             photoPath: '/tmp/p.jpg',
+            syncStatus: Value(status),
+            retryCount: Value(retryCount),
+          ),
+        );
+  }
+
+  Future<void> insertFuelRecord(
+    String clientEventId, {
+    SyncStatus status = SyncStatus.pending,
+    int retryCount = 0,
+  }) async {
+    await db.into(db.pendingFuelRecords).insert(
+          PendingFuelRecordsCompanion.insert(
+            clientEventId: clientEventId,
+            vehicleId: 'veh-1',
+            liters: 45.5,
+            totalCost: 65000,
+            odometer: 128900,
+            fuelType: 'DIESEL',
+            latitude: 0,
+            longitude: 0,
+            recordedAt: DateTime.utc(2026, 9, 8),
+            receiptPhotoPath: '/tmp/receipt.jpg',
+            odometerPhotoPath: '/tmp/odometer.jpg',
             syncStatus: Value(status),
             retryCount: Value(retryCount),
           ),
@@ -250,11 +288,74 @@ void main() {
     });
   });
 
+  group('fuel records', () {
+    test('successful submission marks the row synced', () async {
+      await insertFuelRecord('f1');
+      when(() => fuelRepository.submit(any()))
+          .thenAnswer((_) async => FuelRecordResult.success());
+
+      await syncService.syncNow();
+
+      final row = await db.select(db.pendingFuelRecords).getSingle();
+      expect(row.syncStatus, SyncStatus.synced);
+    });
+
+    test('NETWORK_ERROR keeps retrying with backoff', () async {
+      await insertFuelRecord('f1');
+      when(() => fuelRepository.submit(any())).thenAnswer(
+        (_) async => FuelRecordResult.failure(errorCode: 'NETWORK_ERROR'),
+      );
+
+      await syncService.syncNow();
+
+      final row = await db.select(db.pendingFuelRecords).getSingle();
+      expect(row.syncStatus, SyncStatus.failed);
+      expect(row.retryCount, 1);
+      expect(row.nextRetryAt != null, isTrue);
+    });
+
+    test('a definitive server rejection is marked failed and not retried '
+        'automatically again', () async {
+      await insertFuelRecord('f1');
+      when(() => fuelRepository.submit(any())).thenAnswer(
+        (_) async => FuelRecordResult.failure(
+          errorCode: 'INVALID_VEHICLE',
+          message: 'Véhicule introuvable',
+        ),
+      );
+
+      await syncService.syncNow();
+
+      final row = await db.select(db.pendingFuelRecords).getSingle();
+      expect(row.syncStatus, SyncStatus.failed);
+      expect(row.lastError, 'Véhicule introuvable');
+      expect(row.retryCount, greaterThanOrEqualTo(SyncService.maxAutoRetries));
+
+      // A second automatic pass must not call the API again for this row.
+      await syncService.syncNow();
+      verify(() => fuelRepository.submit(any())).called(1);
+    });
+
+    test('the same clientEventId is reused across retries (idempotence)',
+        () async {
+      await insertFuelRecord('f1');
+      FuelRecordRequest? captured;
+      when(() => fuelRepository.submit(any())).thenAnswer((inv) async {
+        captured = inv.positionalArguments.first as FuelRecordRequest;
+        return FuelRecordResult.success();
+      });
+
+      await syncService.syncNow();
+      expect(captured!.clientEventId, 'f1');
+    });
+  });
+
   group('init()', () {
     test('resets stale uploading rows back to pending without losing them',
         () async {
       await insertPosition('a', status: SyncStatus.uploading, retryCount: 2);
       await insertValidation('v1', status: SyncStatus.uploading, retryCount: 1);
+      await insertFuelRecord('f1', status: SyncStatus.uploading, retryCount: 3);
 
       await syncService.init();
       addTearDown(syncService.dispose);
@@ -266,6 +367,10 @@ void main() {
       final validationRow = await db.select(db.pendingValidations).getSingle();
       expect(validationRow.syncStatus, SyncStatus.pending);
       expect(validationRow.retryCount, 1);
+
+      final fuelRow = await db.select(db.pendingFuelRecords).getSingle();
+      expect(fuelRow.syncStatus, SyncStatus.pending);
+      expect(fuelRow.retryCount, 3);
     });
   });
 }

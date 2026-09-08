@@ -4,11 +4,12 @@ import { TrackingController } from './tracking.controller';
 import { TrackingService } from './tracking.service';
 import { TrackingGateway } from './tracking.gateway';
 import { RealtimeEventsService } from './realtime-events.service';
+import { VehicleOfflineCron } from './vehicle-offline.cron';
 
 @Module({
   imports: [JwtModule.register({})], // secret passé explicitement à verifyAsync() dans TrackingGateway
   controllers: [TrackingController],
-  providers: [TrackingService, TrackingGateway, RealtimeEventsService],
-  exports: [TrackingService, RealtimeEventsService],
+  providers: [TrackingService, TrackingGateway, RealtimeEventsService, VehicleOfflineCron],
+  exports: [TrackingService, RealtimeEventsService, VehicleOfflineCron],
 })
 export class TrackingModule {}

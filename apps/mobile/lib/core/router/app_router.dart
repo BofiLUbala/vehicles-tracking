@@ -11,6 +11,10 @@ import '../../features/auth/presentation/login_phone_screen.dart';
 import '../../features/auth/presentation/otp_verification_screen.dart';
 import '../../features/auth/presentation/profile_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
+import '../../features/fuel/presentation/fuel_form_screen.dart';
+import '../../features/fuel/presentation/fuel_odometer_photo_screen.dart';
+import '../../features/fuel/presentation/fuel_receipt_photo_screen.dart';
+import '../../features/fuel/presentation/fuel_result_screen.dart';
 import '../../features/history/presentation/history_screen.dart';
 import '../../features/missions/presentation/mission_detail_screen.dart';
 import '../../features/missions/presentation/mission_progress_screen.dart';
@@ -72,6 +76,25 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       GoRoute(path: '/sync', builder: (_, __) => const PendingSyncScreen()),
       GoRoute(path: '/history', builder: (_, __) => const HistoryScreen()),
+      GoRoute(path: '/fuel', builder: (_, __) => const FuelFormScreen()),
+      GoRoute(
+        path: '/fuel/:vehicleId/receipt-photo',
+        builder: (_, state) => FuelReceiptPhotoScreen(
+          vehicleId: state.pathParameters['vehicleId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/fuel/:vehicleId/odometer-photo',
+        builder: (_, state) => FuelOdometerPhotoScreen(
+          vehicleId: state.pathParameters['vehicleId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/fuel/:vehicleId/result',
+        builder: (_, state) => FuelResultScreen(
+          vehicleId: state.pathParameters['vehicleId']!,
+        ),
+      ),
       GoRoute(
         path: '/missions',
         builder: (_, __) => const MissionsListScreen(),

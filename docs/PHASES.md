@@ -29,7 +29,13 @@
   - [x] Tests Jest (47 tests au total, incluant 1 test WebSocket réel via socket.io-client) — tous passants
   - [ ] App mobile (GPS arrière-plan, file Drift/SQLite, synchronisation) — en cours (agents interrompus par une instabilité d'infrastructure, à reprendre)
   - [ ] Dashboard admin (carte temps réel MapLibre + Socket.IO) — en cours (agents interrompus par une instabilité d'infrastructure, à reprendre)
-- **Phase 4** — Carburant, alertes, détection des anomalies.
+- **Phase 4** — Carburant, alertes, détection des anomalies. ✅ backend (voir `docs/PHASE4_NOTES.md`)
+  - [x] Module Fuel (`POST/GET /fuel-records`, `GET /fuel-records/:id`, `GET /vehicles/:id/fuel-summary`, `GET /vehicles/:id/fuel-anomalies`) — déclaration toujours acceptée, anomalies = `Alert` non bloquantes
+  - [x] Module Alerts (`GET /alerts` filtrable, `GET /alerts/:id`, `PATCH /alerts/:id` avec machine à états `AlertStatus` validée + `AuditLog`)
+  - [x] Score de suspicion explicable (`Alert.score` + `Alert.scoreBreakdown`) branché sur MOCK_GPS (40), SPEEDING (20), précision GPS insuffisante (10, tracking) et les 6 anomalies carburant
+  - [x] Balayage cron `VehicleOfflineCron` (`@nestjs/schedule`, toutes les 2 min) — `vehicle.offline` sans répétition
+  - [x] Tests Jest (64 tests au total : 47 avant Phase 4 + 17 nouveaux — 9 fuel, 4 alerts, 2 cron, 2 scoring tracking) — tous passants
+  - [ ] Géofencing (chauffeur hors zone, +30 pts), heure incohérente (+15 pts) — hors périmètre, aucun signal propre disponible (voir Phase 5 follow-ups dans PHASE4_NOTES.md)
 - **Phase 5** — Rapports, optimisations, tests complets, déploiement.
 
 Pour chaque module : migrations Prisma → API → permissions → tests → documentation Swagger,

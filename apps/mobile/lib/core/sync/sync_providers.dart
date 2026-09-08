@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/fuel/application/fuel_flow_notifier.dart';
 import '../../features/qr/application/qr_flow_notifier.dart';
 import '../../features/tracking/application/tracking_providers.dart';
 import '../../features/tracking/data/tracking_repository.dart';
@@ -20,22 +21,27 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     validationQueueRepository: ref.watch(validationQueueRepositoryProvider),
     trackingRepository: ref.watch(trackingRepositoryProvider),
     validationRepository: ref.watch(validationRepositoryProvider),
+    fuelQueueRepository: ref.watch(fuelQueueRepositoryProvider),
+    fuelRepository: ref.watch(fuelRepositoryProvider),
   );
   ref.onDispose(service.dispose);
   return service;
 });
 
-/// Nombre total de positions GPS + validations d'étape encore en attente de
-/// synchronisation (`pending`/`failed`/`uploading` compte comme "en cours",
-/// non compté ici — seuls pending/failed sont "en attente" au sens usager).
+/// Nombre total de positions GPS + validations d'étape + déclarations de
+/// plein encore en attente de synchronisation (`pending`/`failed`/
+/// `uploading` compte comme "en cours", non compté ici — seuls
+/// pending/failed sont "en attente" au sens usager).
 final totalPendingSyncCountProvider = Provider<int>((ref) {
   final gps = ref.watch(pendingGpsCountProvider).valueOrNull ?? 0;
   final validations = ref.watch(pendingValidationsCountProvider).valueOrNull ?? 0;
-  return gps + validations;
+  final fuel = ref.watch(pendingFuelRecordsCountProvider).valueOrNull ?? 0;
+  return gps + validations + fuel;
 });
 
 final failedSyncCountProvider = Provider<int>((ref) {
   final gps = ref.watch(gpsFailedCountProvider).valueOrNull ?? 0;
   final validations = ref.watch(validationsFailedCountProvider).valueOrNull ?? 0;
-  return gps + validations;
+  final fuel = ref.watch(fuelRecordsFailedCountProvider).valueOrNull ?? 0;
+  return gps + validations + fuel;
 });
