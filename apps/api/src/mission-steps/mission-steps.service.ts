@@ -4,6 +4,7 @@ import { AlertLevel, AlertType, MissionStatus, MissionStepStatus, Prisma } from 
 import { PrismaService } from '../prisma/prisma.service';
 import { LocationsService } from '../locations/locations.service';
 import { FilesService } from '../files/files.service';
+import { RealtimeEventsService } from '../tracking/realtime-events.service';
 import { ValidateStepMetadataDto } from './dto/validate-step-metadata.dto';
 import { haversineDistanceMeters } from '../common/geo.util';
 import { redactSensitive } from '../common/audit-log.util';
@@ -35,6 +36,7 @@ export class MissionStepsService {
     private readonly locations: LocationsService,
     private readonly files: FilesService,
     private readonly config: ConfigService,
+    private readonly realtime: RealtimeEventsService,
   ) {}
 
   private maxAccuracyMeters(): number {
@@ -191,9 +193,16 @@ export class MissionStepsService {
       },
     });
 
+    this.realtime.emitMissionStepValidated({
+      organizationId: step.mission.organizationId,
+      missionId: step.missionId,
+      stepId: step.id,
+      order: step.order,
+    });
+
     // 11. isMocked=true : accepté quand même, mais Alert basse sévérité (non bloquant).
     if (dto.isMocked) {
-      await this.prisma.alert.create({
+      const alert = await this.prisma.alert.create({
         data: {
           type: AlertType.MOCK_GPS,
           level: AlertLevel.LOW,
@@ -202,6 +211,15 @@ export class MissionStepsService {
           vehicleId: step.mission.vehicleId,
           missionId: step.missionId,
         },
+      });
+      this.realtime.emitAlertCreated({
+        organizationId: step.mission.organizationId,
+        alertId: alert.id,
+        type: alert.type,
+        level: alert.level,
+        vehicleId: step.mission.vehicleId,
+        driverId,
+        missionId: step.missionId,
       });
     }
 

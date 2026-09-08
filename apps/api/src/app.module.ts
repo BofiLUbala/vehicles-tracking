@@ -16,6 +16,7 @@ import { UsersModule } from './users/users.module';
 import { FilesModule } from './files/files.module';
 import { MissionsModule } from './missions/missions.module';
 import { MissionStepsModule } from './mission-steps/mission-steps.module';
+import { TrackingModule } from './tracking/tracking.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { MissionStepsModule } from './mission-steps/mission-steps.module';
     FilesModule,
     MissionsModule,
     MissionStepsModule,
+    TrackingModule,
   ],
   controllers: [HealthController],
   providers: [

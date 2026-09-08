@@ -11,12 +11,14 @@ import '../../features/auth/presentation/login_phone_screen.dart';
 import '../../features/auth/presentation/otp_verification_screen.dart';
 import '../../features/auth/presentation/profile_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
+import '../../features/history/presentation/history_screen.dart';
 import '../../features/missions/presentation/mission_detail_screen.dart';
 import '../../features/missions/presentation/mission_progress_screen.dart';
 import '../../features/missions/presentation/missions_list_screen.dart';
 import '../../features/qr/presentation/photo_capture_screen.dart';
 import '../../features/qr/presentation/qr_scan_screen.dart';
 import '../../features/qr/presentation/validation_result_screen.dart';
+import '../../features/sync/presentation/pending_sync_screen.dart';
 
 /// Adapte un [Stream] en [Listenable] pour piloter `refreshListenable` de
 /// GoRouter à partir des changements d'état d'authentification.
@@ -68,6 +70,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const GpsPermissionScreen(),
       ),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+      GoRoute(path: '/sync', builder: (_, __) => const PendingSyncScreen()),
+      GoRoute(path: '/history', builder: (_, __) => const HistoryScreen()),
       GoRoute(
         path: '/missions',
         builder: (_, __) => const MissionsListScreen(),

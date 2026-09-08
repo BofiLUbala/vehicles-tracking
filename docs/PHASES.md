@@ -20,7 +20,15 @@
   - [x] Tests Jest (40 tests, DB + Redis + MinIO réels) — tous passants
   - [x] App mobile Flutter (écrans 1-11 et 15 : connexion OTP, missions, scan QR, photo, résultat de validation, profil) — Flutter 3.47.2 installé, `flutter create .`, `flutter analyze` (0 erreur) et `flutter test` (23/23) exécutés avec succès
   - [ ] Socket.IO / diffusion temps réel des événements de mission — Phase 3
-- **Phase 3** — GPS en arrière-plan, mode hors connexion, synchronisation, monitoring WebSocket, traces temps réel.
+- **Phase 3** — GPS en arrière-plan, mode hors connexion, synchronisation, monitoring WebSocket, traces temps réel. ✅ backend (voir `docs/PHASE3_NOTES.md`)
+  - [x] Module Tracking (ingestion GPS unitaire + batch, idempotence, upsert `VehicleLatestPosition`, alertes MOCK_GPS/SPEEDING)
+  - [x] Traces GeoJSON (`vehicles/:id/trace`, `missions/:id/trace`) — trace brute non modifiée, ordre chronologique
+  - [x] `GET vehicles/live` avec statut dérivé à la volée (MOVING/ON_MISSION/STOPPED/OFFLINE/SUSPICIOUS)
+  - [x] Passerelle WebSocket (`/tracking` namespace, rooms organization/vehicle/mission, auth JWT à la connexion)
+  - [x] Diffusion des événements missions/mission-steps déjà écrits en Phase 2 (`mission.started`, `mission.completed`, `mission.step.validated`, `alert.created`)
+  - [x] Tests Jest (47 tests au total, incluant 1 test WebSocket réel via socket.io-client) — tous passants
+  - [ ] App mobile (GPS arrière-plan, file Drift/SQLite, synchronisation) — en cours (agents interrompus par une instabilité d'infrastructure, à reprendre)
+  - [ ] Dashboard admin (carte temps réel MapLibre + Socket.IO) — en cours (agents interrompus par une instabilité d'infrastructure, à reprendre)
 - **Phase 4** — Carburant, alertes, détection des anomalies.
 - **Phase 5** — Rapports, optimisations, tests complets, déploiement.
 

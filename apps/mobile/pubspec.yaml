@@ -21,12 +21,18 @@ dependencies:
   connectivity_plus: ^6.0.3
   uuid: ^4.4.0
   intl: ^0.20.3
+  drift: ^2.20.2
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.4
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   mocktail: ^1.0.3
   flutter_lints: ^4.0.0
+  build_runner: ^2.4.11
+  drift_dev: ^2.20.2
 
 flutter:
   uses-material-design: true
@@ -39,3 +45,9 @@ flutter:
 #   volontairement absents : ce sont des besoins de la Phase 3+. Le dépôt
 #   repository pattern de lib/features/*/data est écrit pour pouvoir y brancher
 #   un cache local plus tard sans réécriture.
+#
+# Notes Phase 3 (voir docs/PHASE3_NOTES.md) :
+# - Drift/sqlite3_flutter_libs/path_provider ajoutés : file d'attente locale
+#   hors-ligne (positions GPS + validations d'étape en attente de synchro).
+# - socket_io_client (suivi temps réel), firebase_messaging/firebase_core
+#   (push) et maplibre_gl (carte live) restent hors périmètre Phase 3.

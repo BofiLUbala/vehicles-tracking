@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/big_button.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/widgets/loading_view.dart';
+import '../../tracking/application/tracking_providers.dart';
 import '../application/missions_providers.dart';
 import '../data/models/mission.dart';
 import '../data/models/mission_step.dart';
@@ -20,6 +21,10 @@ class MissionProgressScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final missionAsync = ref.watch(missionDetailProvider(missionId));
+    // Démarre/arrête le suivi GPS en tâche de fond selon le statut de la
+    // mission (section 13) ; s'arrête automatiquement quand cet écran est
+    // quitté (autoDispose).
+    ref.watch(missionTrackingControllerProvider(missionId));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Progression de la mission')),

@@ -5,6 +5,7 @@ import { CreateMissionDto } from './dto/create-mission.dto';
 import { UpdateMissionDto } from './dto/update-mission.dto';
 import { AssignMissionDto } from './dto/assign-mission.dto';
 import { QueryMissionsDto } from './dto/query-missions.dto';
+import { RealtimeEventsService } from '../tracking/realtime-events.service';
 
 /** Statuts considérés comme "occupant" un chauffeur/véhicule pour les besoins d'affectation. */
 const ACTIVE_MISSION_STATUSES: MissionStatus[] = [MissionStatus.ASSIGNED, MissionStatus.STARTED, MissionStatus.IN_PROGRESS];
@@ -21,7 +22,7 @@ const STEP_INCLUDE = { steps: { orderBy: { order: 'asc' as const } }, events: { 
 
 @Injectable()
 export class MissionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly realtime: RealtimeEventsService) {}
 
   async create(organizationId: string, dto: CreateMissionDto) {
     const driver = await this.prisma.driver.findFirst({ where: { id: dto.driverId, organizationId, deletedAt: null } });
@@ -175,7 +176,14 @@ export class MissionsService {
         data: { status: MissionStatus.STARTED, actualStart: new Date() },
       });
       await tx.missionEvent.create({ data: { missionId, type: 'mission.started', payload: {} } });
-      return tx.mission.findUniqueOrThrow({ where: { id: missionId }, include: STEP_INCLUDE });
+      const updated = await tx.mission.findUniqueOrThrow({ where: { id: missionId }, include: STEP_INCLUDE });
+      this.realtime.emitMissionStarted({
+        organizationId: updated.organizationId,
+        missionId,
+        driverId: updated.driverId,
+        vehicleId: updated.vehicleId,
+      });
+      return updated;
     });
   }
 
@@ -212,7 +220,9 @@ export class MissionsService {
           },
         },
       });
-      return tx.mission.findUniqueOrThrow({ where: { id: missionId }, include: STEP_INCLUDE });
+      const updated = await tx.mission.findUniqueOrThrow({ where: { id: missionId }, include: STEP_INCLUDE });
+      this.realtime.emitMissionCompleted({ organizationId: updated.organizationId, missionId, status: finalStatus });
+      return updated;
     });
   }
 

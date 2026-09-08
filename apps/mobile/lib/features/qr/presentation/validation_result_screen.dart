@@ -34,9 +34,13 @@ class ValidationResultScreen extends ConsumerWidget {
 
     final result = state.result!;
     final isSuccess = result.success;
+    final isQueued = result.queued;
     final message = isSuccess
         ? 'Étape validée avec succès.'
-        : frenchMessageForErrorCode(result.errorCode, result.rawMessage);
+        : isQueued
+            ? "Pas de réseau : la validation a été enregistrée sur l'appareil "
+                "et sera envoyée automatiquement dès que la connexion revient."
+            : frenchMessageForErrorCode(result.errorCode, result.rawMessage);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Résultat')),
@@ -47,13 +51,25 @@ class ValidationResultScreen extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                isSuccess ? Icons.check_circle : Icons.cancel,
-                color: isSuccess ? AppTheme.success : AppTheme.danger,
+                isSuccess
+                    ? Icons.check_circle
+                    : isQueued
+                        ? Icons.cloud_off
+                        : Icons.cancel,
+                color: isSuccess
+                    ? AppTheme.success
+                    : isQueued
+                        ? AppTheme.primary
+                        : AppTheme.danger,
                 size: 96,
               ),
               const SizedBox(height: 24),
               Text(
-                isSuccess ? 'Validation réussie' : 'Validation refusée',
+                isSuccess
+                    ? 'Validation réussie'
+                    : isQueued
+                        ? 'En attente de synchronisation'
+                        : 'Validation refusée',
                 style: Theme.of(context).textTheme.headlineSmall,
                 textAlign: TextAlign.center,
               ),
@@ -64,7 +80,7 @@ class ValidationResultScreen extends ConsumerWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
-              if (isSuccess)
+              if (isSuccess || isQueued)
                 BigButton(
                   label: 'Retour à la mission',
                   onPressed: () =>
