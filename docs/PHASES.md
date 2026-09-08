@@ -18,7 +18,7 @@
   - [x] Module Files (upload S3/MinIO, dédup SHA-256, URL signée courte durée)
   - [x] Module Mission-Steps : validation GPS + QR + photo (11 vérifications serveur, 8 codes d'erreur, idempotence par `clientEventId`)
   - [x] Tests Jest (40 tests, DB + Redis + MinIO réels) — tous passants
-  - [x] App mobile Flutter (écrans 1-11 et 15 : connexion OTP, missions, scan QR, photo, résultat de validation, profil) — code complet, **non vérifié** (pas de SDK Flutter disponible ici ; nécessite `flutter create .`, `flutter pub get`, `flutter test` sur une machine équipée avant la Phase 3)
+  - [x] App mobile Flutter (écrans 1-11 et 15 : connexion OTP, missions, scan QR, photo, résultat de validation, profil) — Flutter 3.47.2 installé, `flutter create .`, `flutter analyze` (0 erreur) et `flutter test` (23/23) exécutés avec succès
   - [ ] Socket.IO / diffusion temps réel des événements de mission — Phase 3
 - **Phase 3** — GPS en arrière-plan, mode hors connexion, synchronisation, monitoring WebSocket, traces temps réel.
 - **Phase 4** — Carburant, alertes, détection des anomalies.

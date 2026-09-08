@@ -77,12 +77,21 @@ permissions GPS, missions du jour, détail, démarrage, progression, scan QR, ca
 de validation, profil/déconnexion) — Flutter/Riverpod/Dio/go_router/mobile_scanner/camera, codé
 contre le contrat d'API ci-dessus.
 
-**⚠️ Non vérifié** : le SDK Flutter n'était pas disponible sur la machine qui a écrit ce code, donc
-`flutter pub get`, `flutter analyze`, `flutter test` et `flutter create .` (génération des dossiers
-`android/`/`ios/`) n'ont pas pu être exécutés. Avant de continuer sur cette base :
-1. `flutter create .` depuis `apps/mobile/` (sans écraser `lib/`, `pubspec.yaml`, `test/`)
-2. Ajouter les permissions caméra/localisation dans les manifests Android/iOS générés
-3. `flutter pub get` puis `flutter test` et `flutter analyze` — corriger ce qui ne compile pas
+**✅ Vérifié** : Flutter 3.47.2 (stable) installé sur la machine de dev (`D:\flutter`, cloné depuis
+le dépôt officiel, ajouté au `PATH` utilisateur). `flutter create .` a généré `android/`, `ios/`,
+`web/`, `windows/`, `linux/`, `macos/` sans toucher à `lib/`/`test/` existants (le
+`test/widget_test.dart` boilerplate par défaut a été supprimé). Permissions ajoutées :
+- `AndroidManifest.xml` : `INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `CAMERA`
+- `ios/Runner/Info.plist` : `NSLocationWhenInUseUsageDescription`,
+  `NSLocationAlwaysAndWhenInUseUsageDescription`, `NSCameraUsageDescription`
+
+Contrainte `intl` remontée à `^0.20.3` (conflit avec `flutter_localizations` du SDK).
+`flutter analyze` : 0 erreur (2 infos de style mineures restantes, sans impact).
+`flutter test` : **23/23 tests passants**.
+
+SDK Android : outils de ligne de commande (`cmdline-tools`) manquants — n'affecte pas `analyze`/
+`test`, mais nécessaire avant de builder un APK réel (`flutter doctor --android-licenses` après
+installation via Android Studio ou `sdkmanager`).
 
 ## Suivi pour la Phase 3
 - GPS en arrière-plan + file d'attente hors-ligne (Drift/SQLite) côté mobile

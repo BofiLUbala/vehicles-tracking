@@ -13,7 +13,7 @@ final secureStorageProvider = Provider<SecureStorageService>((ref) {
 /// s'enregistre lui-même via [forceLogoutCallbackProvider] pour éviter une
 /// dépendance circulaire directe entre `dioProvider` et `authNotifierProvider`.
 final forceLogoutCallbackProvider =
-    StateProvider<Future<void> Function()>((ref) async {});
+    StateProvider<Future<void> Function()>((ref) => () async {});
 
 final dioProvider = Provider<Dio>((ref) {
   final storage = ref.watch(secureStorageProvider);
