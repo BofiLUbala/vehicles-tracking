@@ -9,29 +9,33 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   flutter_riverpod: ^2.5.1
   dio: ^5.4.3
-  drift: ^2.16.0
-  sqlite3_flutter_libs: ^0.5.20
+  go_router: ^14.2.0
+  flutter_secure_storage: ^9.0.0
   geolocator: ^11.0.0
   mobile_scanner: ^5.0.0
   camera: ^0.10.5
-  socket_io_client: ^2.0.3
-  flutter_secure_storage: ^9.0.0
-  firebase_messaging: ^14.7.10
-  firebase_core: ^2.24.2
-  maplibre_gl: ^0.19.0
-  uuid: ^4.4.0
   connectivity_plus: ^6.0.3
+  uuid: ^4.4.0
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  drift_dev: ^2.16.0
-  build_runner: ^2.4.9
+  mocktail: ^1.0.3
   flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
   assets:
     - assets/
+
+# Notes Phase 2 (voir docs/PHASES.md) :
+# - Drift/SQLite (cache local hors-ligne), socket_io_client (suivi temps réel),
+#   firebase_messaging/firebase_core (push) et maplibre_gl (carte live) sont
+#   volontairement absents : ce sont des besoins de la Phase 3+. Le dépôt
+#   repository pattern de lib/features/*/data est écrit pour pouvoir y brancher
+#   un cache local plus tard sans réécriture.

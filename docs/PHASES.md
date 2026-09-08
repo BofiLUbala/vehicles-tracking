@@ -13,7 +13,13 @@
   - [x] Bootstrap Roles/Users + `prisma/seed.ts` (organisation démo, rôles, super-admin démo)
   - [x] Tests Jest (19 tests, DB + Redis réels) — voir résultats dans PHASE1_NOTES.md
   - [ ] Logique métier missions/tracking/fuel/alerts — hors périmètre Phase 1 (schéma seulement)
-- **Phase 2** — Missions, application chauffeur, QR code, photos, validation GPS.
+- **Phase 2** — Missions, application chauffeur, QR code, photos, validation GPS. ✅ backend (voir `docs/PHASE2_NOTES.md`) — app mobile écrite mais non compilée (Flutter SDK indisponible sur cette machine)
+  - [x] Module Missions (CRUD + assign/start/complete/cancel + endpoints mobile `today`/`:id`, `MissionEvent` sur chaque transition)
+  - [x] Module Files (upload S3/MinIO, dédup SHA-256, URL signée courte durée)
+  - [x] Module Mission-Steps : validation GPS + QR + photo (11 vérifications serveur, 8 codes d'erreur, idempotence par `clientEventId`)
+  - [x] Tests Jest (40 tests, DB + Redis + MinIO réels) — tous passants
+  - [x] App mobile Flutter (écrans 1-11 et 15 : connexion OTP, missions, scan QR, photo, résultat de validation, profil) — code complet, **non vérifié** (pas de SDK Flutter disponible ici ; nécessite `flutter create .`, `flutter pub get`, `flutter test` sur une machine équipée avant la Phase 3)
+  - [ ] Socket.IO / diffusion temps réel des événements de mission — Phase 3
 - **Phase 3** — GPS en arrière-plan, mode hors connexion, synchronisation, monitoring WebSocket, traces temps réel.
 - **Phase 4** — Carburant, alertes, détection des anomalies.
 - **Phase 5** — Rapports, optimisations, tests complets, déploiement.

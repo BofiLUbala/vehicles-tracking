@@ -13,6 +13,9 @@ import { VehiclesModule } from './vehicles/vehicles.module';
 import { LocationsModule } from './locations/locations.module';
 import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
+import { FilesModule } from './files/files.module';
+import { MissionsModule } from './missions/missions.module';
+import { MissionStepsModule } from './mission-steps/mission-steps.module';
 
 @Module({
   imports: [
@@ -25,6 +28,9 @@ import { UsersModule } from './users/users.module';
     LocationsModule,
     RolesModule,
     UsersModule,
+    FilesModule,
+    MissionsModule,
+    MissionStepsModule,
   ],
   controllers: [HealthController],
   providers: [

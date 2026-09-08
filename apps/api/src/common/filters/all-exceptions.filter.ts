@@ -22,9 +22,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.error(exception instanceof Error ? exception.message : 'Erreur inconnue');
     }
 
+    // Certaines exceptions (ex: validation d'étape de mission) portent un `errorCode` machine-readable
+    // dans leur corps (voir mission-steps/mission-step-validation.errors.ts) — on le préserve tel quel
+    // au lieu de l'écraser par le seul champ `message`, pour que le contrat d'erreur reste exploitable
+    // par l'application chauffeur.
+    const errorCode = isHttp && typeof message === 'object' && message !== null ? (message as any).errorCode : undefined;
+
     response.status(status).json({
       statusCode: status,
       message: typeof message === 'string' ? message : (message as any).message ?? message,
+      ...(errorCode ? { errorCode } : {}),
       timestamp: new Date().toISOString(),
     });
   }
