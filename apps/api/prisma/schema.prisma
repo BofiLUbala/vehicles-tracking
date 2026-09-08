@@ -1,0 +1,641 @@
+// Schéma Prisma complet (Phase 1) — voir docs/PROMPT_ORIGINAL.md section 17.
+// Toutes les tables de l'application y figurent dès la Phase 1 ; seuls les modules
+// chauffeurs/véhicules/locations/auth ont du code (contrôleurs/services) pour l'instant.
+//
+// Notes d'implémentation :
+// - Les colonnes géométriques PostGIS (`geom`) utilisent Prisma `Unsupported(...)` car
+//   Prisma ne modélise pas nativement les types géométriques. Les colonnes latitude/longitude
+//   restent en Float pour un accès simple ; `geom` est écrite via `$executeRaw` (voir
+//   LocationsService.setGeom / TODO Phase 3 pour gps_positions) et les index GiST sont
+//   ajoutés via une migration SQL manuscrite (Prisma ne les génère pas pour `Unsupported`).
+// - `gps_positions` devra être partitionnée par mois (recordedAt) en Phase 3 — TODO conservé
+//   ci-dessous sur le modèle.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// =====================================================================
+// Enums
+// =====================================================================
+
+enum RoleName {
+  DRIVER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum OtpChannel {
+  WHATSAPP
+  EMAIL
+}
+
+enum OtpPurpose {
+  LOGIN
+  NEW_DEVICE
+  PASSWORD_RESET
+  SENSITIVE_ACTION
+  SUSPICIOUS_LOGIN
+}
+
+enum DriverStatus {
+  ACTIVE
+  SUSPENDED
+  UNAVAILABLE
+  DISABLED
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  ON_MISSION
+  BROKEN_DOWN
+  IN_MAINTENANCE
+  DISABLED
+}
+
+enum LocationType {
+  COLLECTION
+  DROPOFF
+  LANDFILL
+  TRANSFER_CENTER
+  AUTHORIZED_GAS_STATION
+}
+
+enum LocationStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MissionStatus {
+  PLANNED
+  ASSIGNED
+  STARTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  LATE
+  SUSPICIOUS
+  NOT_COMPLETED
+}
+
+enum MissionStepStatus {
+  PENDING
+  IN_PROGRESS
+  VALIDATED
+  SKIPPED
+  FAILED
+}
+
+enum MissionStepActionType {
+  COLLECT
+  DROPOFF
+  WEIGH
+  REFUEL
+  CHECKPOINT
+}
+
+enum FuelType {
+  DIESEL
+  PETROL
+  ELECTRIC
+  OTHER
+}
+
+enum AlertType {
+  SPEEDING
+  ROUTE_DEVIATION
+  UNAUTHORIZED_STOP
+  MOCK_GPS
+  MISSED_STEP
+  LATE_ARRIVAL
+  FUEL_ANOMALY
+  DEVICE_OFFLINE
+  OTHER
+}
+
+enum AlertLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertStatus {
+  NEW
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCED
+  CONFLICT
+  FAILED
+}
+
+// =====================================================================
+// Organisations & accès
+// =====================================================================
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  drivers   Driver[]
+  vehicles  Vehicle[]
+  locations Location[]
+  missions  Mission[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String    @id @default(uuid())
+  organizationId String
+  email          String    @unique
+  passwordHash   String
+  firstName      String?
+  lastName       String?
+  roleId         String
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  role         Role          @relation(fields: [roleId], references: [id])
+  sessions     UserSession[]
+  devices      Device[]
+  auditLogs    AuditLog[]
+  notifications Notification[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        RoleName @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  users           User[]
+  permissions     RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+// Table de jointure explicite rôle <-> permission (RBAC simple, sans abstraction générique).
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// Sessions admin (refresh tokens). Les chauffeurs utilisent le même modèle via driverId.
+model UserSession {
+  id               String    @id @default(uuid())
+  userId           String?
+  driverId         String?
+  deviceId         String?
+  refreshTokenHash String
+  // Famille de rotation : permet de détecter le rejeu d'un refresh token révoqué.
+  family           String
+  revokedAt        DateTime?
+  replacedBySessionId String?
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  createdAt        DateTime  @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id])
+  driver Driver? @relation(fields: [driverId], references: [id])
+
+  @@index([userId])
+  @@index([driverId])
+  @@index([family])
+  @@map("user_sessions")
+}
+
+model OtpRequest {
+  id             String     @id @default(uuid())
+  organizationId String?
+  identifier     String // téléphone E.164 (chauffeur) ou e-mail (admin)
+  channel        OtpChannel
+  purpose        OtpPurpose @default(LOGIN)
+  codeHash       String
+  attempts       Int        @default(0)
+  maxAttempts    Int        @default(5)
+  consumedAt     DateTime?
+  expiresAt      DateTime
+  ipAddress      String?
+  deviceId       String?
+  createdAt      DateTime   @default(now())
+
+  @@index([identifier, channel])
+  @@index([expiresAt])
+  @@map("otp_requests")
+}
+
+model Device {
+  id         String    @id @default(uuid())
+  driverId   String?
+  userId     String?
+  deviceId   String    @unique
+  platform   String?
+  pushToken  String?
+  lastSeenAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  driver Driver? @relation(fields: [driverId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([driverId])
+  @@index([userId])
+  @@map("devices")
+}
+
+// =====================================================================
+// Chauffeurs & véhicules
+// =====================================================================
+
+model Driver {
+  id             String       @id @default(uuid())
+  organizationId String
+  firstName      String
+  lastName       String
+  phone          String       @unique
+  licenseNumber  String?
+  status         DriverStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization               @relation(fields: [organizationId], references: [id])
+  devices      Device[]
+  sessions     UserSession[]
+  assignments  DriverVehicleAssignment[]
+  missions     Mission[]
+  fuelRecords  FuelRecord[]
+  validations  MissionStepValidation[]
+  alerts       Alert[]
+  notifications Notification[]
+
+  @@index([organizationId])
+  @@map("drivers")
+}
+
+model Vehicle {
+  id             String        @id @default(uuid())
+  organizationId String
+  plateNumber    String        @unique
+  brand          String?
+  model          String?
+  year           Int?
+  status         VehicleStatus @default(AVAILABLE)
+  tankCapacity   Float?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  organization    Organization               @relation(fields: [organizationId], references: [id])
+  assignments     DriverVehicleAssignment[]
+  missions        Mission[]
+  gpsPositions    GpsPosition[]
+  fuelRecords     FuelRecord[]
+  alerts          Alert[]
+  latestPosition  VehicleLatestPosition?
+
+  @@index([organizationId])
+  @@map("vehicles")
+}
+
+model DriverVehicleAssignment {
+  id        String    @id @default(uuid())
+  driverId  String
+  vehicleId String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  driver  Driver  @relation(fields: [driverId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([driverId])
+  @@index([vehicleId])
+  @@map("driver_vehicle_assignments")
+}
+
+// =====================================================================
+// Points géographiques
+// =====================================================================
+
+model Location {
+  id             String         @id @default(uuid())
+  organizationId String
+  name           String
+  type           LocationType
+  address        String?
+  latitude       Float
+  longitude      Float
+  /// Colonne géométrique PostGIS (SRID 4326). Écrite via $executeRaw, voir LocationsService.
+  geom           Unsupported("geometry(Point, 4326)")?
+  allowedRadius  Int            @default(50)
+  status         LocationStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  qrCodes      LocationQrCode[]
+  missionSteps MissionStep[]
+
+  @@index([organizationId])
+  @@map("locations")
+}
+
+model LocationQrCode {
+  id         String    @id @default(uuid())
+  locationId String
+  // Jeton signé (HMAC), opaque — jamais l'ID brut du lieu (non devinable).
+  token      String    @unique
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@index([locationId])
+  @@map("location_qr_codes")
+}
+
+// =====================================================================
+// Missions (schéma Phase 1, logique métier en Phase 2)
+// =====================================================================
+
+model Mission {
+  id             String        @id @default(uuid())
+  organizationId String
+  driverId       String
+  vehicleId      String
+  status         MissionStatus @default(PLANNED)
+  plannedStart   DateTime?
+  plannedEnd     DateTime?
+  actualStart    DateTime?
+  actualEnd      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id])
+  driver       Driver          @relation(fields: [driverId], references: [id])
+  vehicle      Vehicle         @relation(fields: [vehicleId], references: [id])
+  steps        MissionStep[]
+  events       MissionEvent[]
+  gpsPositions GpsPosition[]
+  alerts       Alert[]
+
+  @@index([organizationId])
+  @@index([plannedStart])
+  @@map("missions")
+}
+
+model MissionStep {
+  id           String                 @id @default(uuid())
+  missionId    String
+  locationId   String
+  order        Int
+  actionType   MissionStepActionType
+  status       MissionStepStatus      @default(PENDING)
+  plannedAt    DateTime?
+  toleranceMin Int                    @default(15)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  mission     Mission                 @relation(fields: [missionId], references: [id])
+  location    Location                @relation(fields: [locationId], references: [id])
+  validations MissionStepValidation[]
+
+  @@index([missionId])
+  @@map("mission_steps")
+}
+
+model MissionEvent {
+  id        String   @id @default(uuid())
+  missionId String
+  type      String
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  mission Mission @relation(fields: [missionId], references: [id])
+
+  @@index([missionId])
+  @@map("mission_events")
+}
+
+model MissionStepValidation {
+  id            String     @id @default(uuid())
+  missionStepId String
+  driverId      String
+  // Idempotence pour la synchronisation hors-ligne (Phase 3).
+  clientEventId String     @unique
+  qrToken       String
+  latitude      Float
+  longitude     Float
+  accuracy      Float
+  isMocked      Boolean    @default(false)
+  syncStatus    SyncStatus @default(SYNCED)
+  recordedAt    DateTime
+  createdAt     DateTime   @default(now())
+
+  missionStep MissionStep @relation(fields: [missionStepId], references: [id])
+  driver      Driver      @relation(fields: [driverId], references: [id])
+
+  @@index([missionStepId])
+  @@index([driverId])
+  @@map("mission_step_validations")
+}
+
+// =====================================================================
+// Suivi GPS
+// =====================================================================
+
+// TODO Phase 3 : partitionner cette table par mois (recordedAt) une fois le volume réel connu.
+model GpsPosition {
+  id            String     @id @default(uuid())
+  vehicleId     String
+  missionId     String?
+  // Idempotence pour la synchronisation hors-ligne (Phase 3).
+  clientEventId String     @unique
+  latitude      Float
+  longitude     Float
+  /// Colonne géométrique PostGIS (SRID 4326), voir note en tête de fichier.
+  geom          Unsupported("geometry(Point, 4326)")?
+  accuracy      Float?
+  altitude      Float?
+  speed         Float?
+  heading       Float?
+  isMocked      Boolean    @default(false)
+  syncStatus    SyncStatus @default(SYNCED)
+  recordedAt    DateTime
+  createdAt     DateTime   @default(now())
+
+  vehicle Vehicle  @relation(fields: [vehicleId], references: [id])
+  mission Mission? @relation(fields: [missionId], references: [id])
+
+  @@index([vehicleId])
+  @@index([missionId])
+  @@index([recordedAt])
+  @@map("gps_positions")
+}
+
+// Table de projection (upsert) pour un accès O(1) à la dernière position connue par véhicule.
+model VehicleLatestPosition {
+  vehicleId String        @id
+  latitude  Float
+  longitude Float
+  speed     Float?
+  heading   Float?
+  status    VehicleStatus
+  updatedAt DateTime      @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@map("vehicle_latest_positions")
+}
+
+// =====================================================================
+// Carburant (schéma Phase 1, logique métier en Phase 4)
+// =====================================================================
+
+model FuelRecord {
+  id          String   @id @default(uuid())
+  vehicleId   String
+  driverId    String
+  liters      Float
+  totalCost   Float
+  odometer    Float
+  fuelType    FuelType
+  stationName String?
+  latitude    Float?
+  longitude   Float?
+  receiptFileId String?
+  createdAt   DateTime @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+  driver  Driver  @relation(fields: [driverId], references: [id])
+  receiptFile File? @relation(fields: [receiptFileId], references: [id])
+
+  @@index([vehicleId])
+  @@index([driverId])
+  @@map("fuel_records")
+}
+
+// =====================================================================
+// Fichiers (photos, reçus…) — stockage S3, polymorphe via relatedTo/relatedId
+// =====================================================================
+
+model File {
+  id         String   @id @default(uuid())
+  bucketKey  String
+  hash       String
+  mimeType   String
+  sizeBytes  Int?
+  relatedTo  String? // ex: "mission_step_validation", "fuel_record"
+  relatedId  String?
+  uploadedById String?
+  createdAt  DateTime @default(now())
+
+  fuelRecords FuelRecord[]
+
+  @@index([relatedTo, relatedId])
+  @@map("files")
+}
+
+// =====================================================================
+// Alertes & notifications (schéma Phase 1, logique métier en Phase 4)
+// =====================================================================
+
+model Alert {
+  id        String      @id @default(uuid())
+  type      AlertType
+  level     AlertLevel
+  status    AlertStatus @default(NEW)
+  score     Int         @default(0)
+  message   String?
+  vehicleId String?
+  driverId  String?
+  missionId String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  driver  Driver?  @relation(fields: [driverId], references: [id])
+  mission Mission? @relation(fields: [missionId], references: [id])
+
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([missionId])
+  @@map("alerts")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String?
+  driverId  String?
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id])
+  driver Driver? @relation(fields: [driverId], references: [id])
+
+  @@index([userId])
+  @@index([driverId])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?
+  action    String
+  entity    String?
+  entityId  String?
+  // Les valeurs sensibles (codes OTP, mots de passe, tokens) doivent être
+  // redigées avant écriture ici — voir common/audit-log helper.
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
