@@ -11,3 +11,4 @@ ios/Pods/
 android/.gradle/
 infrastructure/backups/*
 !infrastructure/backups/.gitkeep
+*.tsbuildinfo
