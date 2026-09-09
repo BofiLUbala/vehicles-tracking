@@ -101,11 +101,16 @@ Postgres/Redis dockerisés (pas de mocks DB).
 
 ## Ce qui est stub (volontairement, pour Phase 1)
 
-- **Envoi OTP réel** : `OTP_CHANNEL_MODE=stub` par défaut. `WhatsappCloudApiSender` appelle
-  réellement l'API Graph si `WHATSAPP_PHONE_NUMBER_ID`/`WHATSAPP_ACCESS_TOKEN` sont renseignés,
-  sinon lève `NotImplementedException`. `SmtpEmailSender` lève toujours
-  `NotImplementedException` (aucun client SMTP ajouté comme dépendance en Phase 1 — prévoir
-  `nodemailer` en Phase 2+ si l'envoi e-mail réel est nécessaire).
+- **Envoi OTP réel** : `OTP_CHANNEL_MODE=stub` par défaut, activable par canal indépendamment via
+  `OTP_WHATSAPP_MODE`/`OTP_EMAIL_MODE=live` (retombent sur `OTP_CHANNEL_MODE` si non renseignées).
+  `WhatsappCloudApiSender` appelle réellement l'API Graph si `WHATSAPP_PHONE_NUMBER_ID`/
+  `WHATSAPP_ACCESS_TOKEN` sont renseignés, sinon lève `NotImplementedException`.
+  `SmtpEmailSender` envoie réellement via `nodemailer` (compatible Gmail/SES/Brevo/Mailgun — port
+  465 = TLS direct, tout autre port = STARTTLS) dès que `SMTP_HOST` est renseigné avec
+  `OTP_EMAIL_MODE=live` ; sinon reste stub. Testé en conditions réelles le 2026-09-09 avec des
+  identifiants Gmail (SMTP_HOST=smtp.gmail.com:587) — envoi confirmé sans erreur, aucun code/
+  identifiant jamais journalisé (`SmtpEmailSender` ne logge que "OTP e-mail envoyé à {identifier}"
+  en succès, le type d'erreur en échec).
 - **Stockage fichiers (S3)** : modèle `File` présent en base, aucun service d'upload.
 - **Notifications push (FCM)** : modèle `Notification`/`Device.pushToken` présents, aucun envoi.
 - **Déclencheurs OTP admin** : seul "nouvel appareil" est implémenté. Réinitialisation mot de

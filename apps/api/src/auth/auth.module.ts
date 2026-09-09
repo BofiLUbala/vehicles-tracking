@@ -12,8 +12,14 @@ import { StubEmailSender } from './senders/stub-email.sender';
 import { WhatsappCloudApiSender } from './senders/whatsapp-cloud-api.sender';
 import { SmtpEmailSender } from './senders/smtp-email.sender';
 
-// OTP_CHANNEL_MODE=stub (défaut) journalise les codes au lieu d'appeler des API externes.
-const isLive = (config: ConfigService) => config.get<string>('OTP_CHANNEL_MODE') === 'live';
+// Mode par canal (stub par défaut journalise les codes au lieu d'appeler des API externes).
+// OTP_CHANNEL_MODE reste un interrupteur global rétrocompatible ; OTP_WHATSAPP_MODE/OTP_EMAIL_MODE
+// permettent d'activer un canal en "live" indépendamment de l'autre (ex: SMTP configuré mais pas
+// encore WhatsApp Cloud API).
+const isWhatsappLive = (config: ConfigService) =>
+  (config.get<string>('OTP_WHATSAPP_MODE') ?? config.get<string>('OTP_CHANNEL_MODE')) === 'live';
+const isEmailLive = (config: ConfigService) =>
+  (config.get<string>('OTP_EMAIL_MODE') ?? config.get<string>('OTP_CHANNEL_MODE')) === 'live';
 
 @Module({
   imports: [
@@ -32,12 +38,13 @@ const isLive = (config: ConfigService) => config.get<string>('OTP_CHANNEL_MODE')
     {
       provide: OTP_SENDER_WHATSAPP,
       useFactory: (config: ConfigService, stub: StubWhatsappSender, live: WhatsappCloudApiSender) =>
-        isLive(config) ? live : stub,
+        isWhatsappLive(config) ? live : stub,
       inject: [ConfigService, StubWhatsappSender, WhatsappCloudApiSender],
     },
     {
       provide: OTP_SENDER_EMAIL,
-      useFactory: (config: ConfigService, stub: StubEmailSender, live: SmtpEmailSender) => (isLive(config) ? live : stub),
+      useFactory: (config: ConfigService, stub: StubEmailSender, live: SmtpEmailSender) =>
+        isEmailLive(config) ? live : stub,
       inject: [ConfigService, StubEmailSender, SmtpEmailSender],
     },
   ],
