@@ -1,6 +1,7 @@
 'use client';
 
-import type { FuelReportRow, MissionReportRow, MissionReportStatus } from '@/features/reports/types';
+import type { FuelReportRow, MissionReportRow } from '@/features/reports/types';
+import { MISSION_STATUS_LABELS } from '@/features/missions/status-labels';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -12,18 +13,6 @@ function formatDate(iso: string | null): string {
 }
 
 const CURRENCY_FORMAT = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
-
-const MISSION_STATUS_LABELS: Record<MissionReportStatus, string> = {
-  PLANNED: 'Planifiée',
-  ASSIGNED: 'Assignée',
-  STARTED: 'Démarrée',
-  IN_PROGRESS: 'En cours',
-  COMPLETED: 'Terminée',
-  CANCELLED: 'Annulée',
-  LATE: 'En retard',
-  SUSPICIOUS: 'Suspecte',
-  NOT_COMPLETED: 'Non terminée',
-};
 
 export interface MissionsReportTableProps {
   rows: MissionReportRow[];
