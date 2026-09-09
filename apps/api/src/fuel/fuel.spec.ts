@@ -233,6 +233,37 @@ describe('FuelService (intégration DB + MinIO réels)', () => {
     expect(summary.averageConsumptionL100km).toBeCloseTo((45 / 500) * 100, 5);
   });
 
+  it('idempotence : une resoumission du même clientEventId renvoie la déclaration existante sans créer de doublon ni ré-évaluer les anomalies', async () => {
+    const { driver, vehicle } = await setupDriverAndVehicle();
+    const clientEventId = `evt-${randomUUID()}`;
+
+    const first = await fuel.create(
+      driver.id,
+      DEMO_ORG_ID,
+      metadata(vehicle.id, { odometer: 9500, clientEventId }),
+      fakeFile('r1', 'receipt'),
+      fakeFile('o1', 'odometerPhoto'),
+    );
+    expect(first.record.id).toBeDefined();
+
+    const countAfterFirst = await prisma.fuelRecord.count({ where: { vehicleId: vehicle.id } });
+
+    // Resoumission (retry réseau côté mobile) : même clientEventId, potentiellement de nouvelles
+    // photos (peu importe, on ne les uploade même pas) — doit renvoyer EXACTEMENT le même enregistrement.
+    const replay = await fuel.create(
+      driver.id,
+      DEMO_ORG_ID,
+      metadata(vehicle.id, { odometer: 9500, clientEventId }),
+      fakeFile('r2', 'receipt'),
+      fakeFile('o2', 'odometerPhoto'),
+    );
+    expect(replay.record.id).toBe(first.record.id);
+    expect((replay as any).idempotentReplay).toBe(true);
+
+    const countAfterReplay = await prisma.fuelRecord.count({ where: { vehicleId: vehicle.id } });
+    expect(countAfterReplay).toBe(countAfterFirst);
+  });
+
   it('GET fuel-anomalies renvoie les alertes FUEL_ANOMALY de ce véhicule', async () => {
     const { driver, vehicle } = await setupDriverAndVehicle();
 

@@ -8,8 +8,9 @@
 //   restent en Float pour un accès simple ; `geom` est écrite via `$executeRaw` (voir
 //   LocationsService.setGeom / TODO Phase 3 pour gps_positions) et les index GiST sont
 //   ajoutés via une migration SQL manuscrite (Prisma ne les génère pas pour `Unsupported`).
-// - `gps_positions` devra être partitionnée par mois (recordedAt) en Phase 3 — TODO conservé
-//   ci-dessous sur le modèle.
+// - `gps_positions` : partitionnement par mois (recordedAt) toujours en attente d'un volume réel
+//   observé pour être dimensionné correctement — plan concret documenté dans docs/PHASE5_NOTES.md
+//   plutôt qu'un TODO nu sur le modèle (voir commentaire sur GpsPosition ci-dessous).
 
 generator client {
   provider        = "prisma-client-js"
@@ -486,7 +487,11 @@ model MissionStepValidation {
 // Suivi GPS
 // =====================================================================
 
-// TODO Phase 3 : partitionner cette table par mois (recordedAt) une fois le volume réel connu.
+// Partitionnement par mois (recordedAt) : PAS implémenté ici (changement de stockage trop
+// structurant pour être vérifié en sécurité dans cette phase — nécessiterait de recréer la table en
+// table partitionnée native Postgres, migration de données, et re-test de tous les chemins qui
+// écrivent/lisent gps_positions). Plan concret documenté dans docs/PHASE5_NOTES.md ("Partitionnement
+// gps_positions") plutôt que laissé en simple TODO.
 model GpsPosition {
   id            String     @id @default(uuid())
   vehicleId     String
@@ -538,6 +543,9 @@ model FuelRecord {
   id          String   @id @default(uuid())
   vehicleId   String
   driverId    String
+  // Idempotence pour la synchronisation hors-ligne (Phase 5 — comblement du même trou
+  // qu'avaient déjà GpsPosition/MissionStepValidation depuis les Phases 2/3).
+  clientEventId String? @unique
   liters      Float
   totalCost   Float
   odometer    Float
@@ -604,6 +612,13 @@ model Alert {
   @@index([vehicleId])
   @@index([driverId])
   @@index([missionId])
+  // Ajoutés Phase 5 — patterns de filtrage réels de GET /alerts et des rapports (section 20) :
+  // filtrage/tri par type, niveau, statut, et la combinaison statut+date la plus fréquente
+  // sur le dashboard (file d'alertes non traitées, plus récentes en premier).
+  @@index([type])
+  @@index([level])
+  @@index([status])
+  @@index([status, createdAt])
   @@map("alerts")
 }
 

@@ -13,7 +13,7 @@ export const NAV_LINKS: NavLink[] = [
   { href: '/locations', label: 'Points géographiques', comingSoon: true },
   { href: '/fuel', label: 'Carburant' },
   { href: '/alerts', label: 'Alertes' },
-  { href: '/reports', label: 'Rapports', comingSoon: true },
+  { href: '/reports', label: 'Rapports' },
   { href: '/users', label: 'Utilisateurs', comingSoon: true },
   { href: '/settings', label: 'Paramètres', comingSoon: true },
 ];

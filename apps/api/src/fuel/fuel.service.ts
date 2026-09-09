@@ -110,6 +110,24 @@ export class FuelService {
     receiptPhoto?: Express.Multer.File,
     odometerPhoto?: Express.Multer.File,
   ) {
+    // Idempotence (comble le trou documenté dans docs/PHASE4_NOTES.md) — même motif que
+    // mission-steps.service.ts#validate / tracking.service.ts#ingestPosition : une resoumission du
+    // même clientEventId (retry réseau côté mobile) renvoie poliment la déclaration déjà créée au
+    // lieu de créer un doublon ou de réévaluer les anomalies une seconde fois. Contrôlé EN PREMIER,
+    // avant toute validation métier, pour la même raison que documentée dans mission-steps.service.ts.
+    if (dto.clientEventId) {
+      const existing = await this.prisma.fuelRecord.findUnique({ where: { clientEventId: dto.clientEventId } });
+      if (existing) {
+        return {
+          record: existing,
+          distanceKm: null,
+          consumptionL100km: null,
+          anomalies: [],
+          idempotentReplay: true,
+        };
+      }
+    }
+
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId, organizationId, deletedAt: null } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
 
@@ -140,6 +158,7 @@ export class FuelService {
       data: {
         vehicleId: dto.vehicleId,
         driverId,
+        clientEventId: dto.clientEventId,
         liters: dto.liters,
         totalCost: dto.totalCost,
         odometer: dto.odometer,

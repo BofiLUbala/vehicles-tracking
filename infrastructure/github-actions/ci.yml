@@ -1,31 +1,8 @@
-name: CI
-
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-
-jobs:
-  api-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci
-        working-directory: apps/api
-      - run: npm run test
-        working-directory: apps/api
-
-  admin-web-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci
-        working-directory: apps/admin-web
-      - run: npm run build
-        working-directory: apps/admin-web
+# Ce fichier n'est PAS exécuté par GitHub Actions : seul `.github/workflows/*.yml` (à la racine
+# du repo) est lu par GitHub. Ce dossier ne contenait qu'une copie devenue obsolète (elle ne
+# couvrait ni Postgres/Redis/MinIO en services containers, ni Flutter, et référençait un job
+# `admin-web-build` qui avait été retiré du vrai workflow — voir historique git).
+#
+# Le workflow CI réel et à jour vit dans `.github/workflows/ci.yml` (jobs `api-tests`,
+# `admin-web`, `mobile`). Ce fichier est conservé uniquement comme pointeur pour éviter toute
+# confusion future ; ne pas y ajouter de contenu — modifier `.github/workflows/ci.yml`.

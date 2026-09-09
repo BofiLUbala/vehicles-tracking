@@ -37,6 +37,18 @@
   - [x] Tests Jest (64 tests au total : 47 avant Phase 4 + 17 nouveaux — 9 fuel, 4 alerts, 2 cron, 2 scoring tracking) — tous passants
   - [ ] Géofencing (chauffeur hors zone, +30 pts), heure incohérente (+15 pts) — hors périmètre, aucun signal propre disponible (voir Phase 5 follow-ups dans PHASE4_NOTES.md)
 - **Phase 5** — Rapports, optimisations, tests complets, déploiement.
+  - [x] Module Reports backend (`apps/api/src/reports/`) — `GET /reports/missions|fuel|gps-positions`, filtrable période/véhicule/chauffeur/statut/point de collecte/mission, export `json|csv|xlsx|pdf` réellement valides (CSV parseable, XLSX relu par exceljs, PDF signature `%PDF-`) — voir `docs/PHASE5_NOTES.md`. UI `apps/admin-web/src/features/reports/` — autre agent, hors périmètre de ce travail.
+  - [x] Correctif idempotence `POST /fuel-records` (`clientEventId`, même motif que `GpsPosition`/`MissionStepValidation`) — bug documenté dans `docs/PHASE4_NOTES.md` "Follow-ups Phase 5"
+  - [x] Tests sécurité bout en bout (`src/common/security-e2e.spec.ts`) : RBAC 401/403 réel sur la pile HTTP, validation des entrées (400), rate limiting `ThrottlerGuard` réellement déclenché (429)
+  - [x] Index `Alert` ajoutés (`type`, `level`, `status`, `status+createdAt`) pour les patterns de filtrage `GET /alerts` et `GET /reports/*`
+  - [x] Plan de partitionnement `gps_positions` documenté (`docs/PHASE5_NOTES.md`) — non implémenté (changement de stockage trop structurant pour être vérifié en sécurité cette phase)
+  - [x] Tests Jest : 79/79 passants (64 avant Phase 5 + 15 nouveaux : 1 idempotence fuel, 6 reports, 8 sécurité e2e)
+  - [x] `apps/admin-web/Dockerfile` (build multi-stage, sortie Next.js `standalone` — voir `next.config.mjs`) — build et run réels vérifiés (`docker build`, conteneur démarré, `GET /login` → 200)
+  - [x] `docker-compose.yml` revu : healthchecks sur les 6 services (postgres/redis/minio déjà + api/admin-web ajoutés), `depends_on: condition: service_healthy`, `version:` obsolète retiré, variables `NEXT_PUBLIC_*`/`API_BASE_URL` de `admin-web` documentées dans `.env.example` — validé avec `docker compose config` **et** stack complète (6 services) démarrée réellement sous un projet séparé (`prod-check`), migrations + seed appliqués, login admin bout en bout à travers nginx vérifié (voir `docs/DEPLOYMENT.md`)
+  - [x] `infrastructure/nginx/default.conf` revu : route `/health`, en-têtes `X-Forwarded-*`, `proxy_read_timeout` étendu sur `/socket.io/` (WebSocket tracking longue durée), gabarit HTTPS commenté (TLS non automatisé — voir `docs/DEPLOYMENT.md`). Bug réel trouvé et corrigé en testant la stack complète : le bloc générique `/api/` envoyait aussi les Route Handlers internes Next.js (`/api/auth/*`, `/api/reports/*`) vers l'api NestJS au lieu d'`admin-web`, cassant le login admin à travers nginx (404) — remplacé par des blocs explicites `/api/auth/`, `/api/reports/` → `admin-web` et `/api/v1/` → `api`, re-testé OK (voir `docs/DEPLOYMENT.md`)
+  - [x] CI (`.github/workflows/ci.yml`) étendue : job `api-tests` + MinIO en service container (Files/Fuel en dépendent depuis Phase 2), nouveaux jobs `admin-web` (vitest + build) et `mobile` (Flutter 3.47.2 : pub get/analyze/test)
+  - [x] `infrastructure/scripts/backup.sh` / `restore.sh` — testés réellement contre le Postgres de dev (dump + restauration vers une base de test, tables vérifiées)
+  - [x] `docs/DEPLOYMENT.md` — guide de déploiement, graphe de dépendances/healthchecks, différences dev/test/prod, référence env vars, limites connues (pas de TLS automatisé, pas de CDN, pas de scaling multi-instance)
 
 Pour chaque module : migrations Prisma → API → permissions → tests → documentation Swagger,
 avant de passer au module suivant.

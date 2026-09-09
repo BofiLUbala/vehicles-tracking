@@ -8,6 +8,15 @@ import { IsEnum, IsLatitude, IsLongitude, IsNumber, IsOptional, IsPositive, IsSt
  * accompagnent ce JSON, donc pas de body JSON classique.
  */
 export class CreateFuelRecordMetadataDto {
+  @ApiProperty({
+    required: false,
+    description:
+      'Identifiant unique généré côté mobile — idempotence pour la synchronisation hors-ligne (comble le trou documenté dans docs/PHASE4_NOTES.md, même motif que GpsPosition/MissionStepValidation). Optionnel pour compatibilité ascendante avec un client mobile qui ne l\'enverrait pas encore.',
+  })
+  @IsOptional()
+  @IsString()
+  clientEventId?: string;
+
   @ApiProperty()
   @IsUUID()
   vehicleId!: string;

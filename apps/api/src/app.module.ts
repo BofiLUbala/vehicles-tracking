@@ -20,6 +20,7 @@ import { MissionStepsModule } from './mission-steps/mission-steps.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { FuelModule } from './fuel/fuel.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AlertsModule } from './alerts/alerts.module';
     TrackingModule,
     FuelModule,
     AlertsModule,
+    ReportsModule,
   ],
   controllers: [HealthController],
   providers: [
