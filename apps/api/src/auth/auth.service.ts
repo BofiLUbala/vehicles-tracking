@@ -16,6 +16,8 @@ import { AdminVerifyOtpDto } from './dto/admin-verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthenticatedPrincipal } from '../common/decorators/current-user.decorator';
+import { RequestAdminActivationDto, VerifyAdminActivationDto } from './dto/activate-admin.dto';
+import { RequestSuperAdminRegistrationDto, VerifySuperAdminRegistrationDto } from './dto/register-super-admin.dto';
 
 const GENERIC_OTP_ERROR = 'Code invalide ou expiré';
 const GENERIC_LOGIN_ERROR = 'Identifiants invalides';
@@ -42,6 +44,25 @@ export class AuthService {
     return channel === OtpChannel.EMAIL ? this.emailSender : this.whatsappSender;
   }
 
+  /**
+   * Les e-mails sont stockes en minuscules : toute recherche/emission d'OTP doit passer par ici,
+   * sinon "Admin@Exemple.com" a la connexion ne retrouve pas le compte cree a l'inscription.
+   */
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
+  /**
+   * En developpement uniquement (OTP_DEV_EXPOSE_CODE=true et NODE_ENV != production), le code est
+   * renvoye dans la reponse pour terminer un parcours quand l'envoi e-mail est indisponible.
+   */
+  private get exposeDevCode(): boolean {
+    return (
+      this.config.get<string>('OTP_DEV_EXPOSE_CODE') === 'true' &&
+      (this.config.get<string>('NODE_ENV') ?? process.env.NODE_ENV) !== 'production'
+    );
+  }
+
   private async audit(action: string, entity: string, entityId: string | undefined, metadata: Record<string, unknown>) {
     await this.prisma.auditLog.create({
       data: {
@@ -63,7 +84,7 @@ export class AuthService {
     purpose: OtpPurpose,
     deviceId: string | undefined,
     ip: string | undefined,
-  ) {
+  ): Promise<{ devCode?: string }> {
     const cooldown = await this.otpStore.secondsUntilResendAllowed(identifier, channel);
     if (cooldown > 0) {
       throw new BadRequestException(`Veuillez patienter ${cooldown}s avant de redemander un code`);
@@ -73,7 +94,7 @@ export class AuthService {
     const codeHash = await argon2.hash(code);
 
     await this.otpStore.set(identifier, channel, codeHash, 5);
-    await this.prisma.otpRequest.create({
+    const otpRequest = await this.prisma.otpRequest.create({
       data: {
         identifier,
         channel,
@@ -85,8 +106,19 @@ export class AuthService {
       },
     });
 
-    await this.senderFor(channel).send(identifier, code);
+    try {
+      await this.senderFor(channel).send(identifier, code);
+    } catch (error) {
+      // Un code qui n'a pas pu être envoyé ne doit être ni vérifiable, ni imposer
+      // le délai anti-spam lors d'une nouvelle tentative.
+      await Promise.allSettled([
+        this.otpStore.consume(identifier, channel),
+        this.prisma.otpRequest.delete({ where: { id: otpRequest.id } }),
+      ]);
+      throw error;
+    }
     await this.audit('otp.requested', 'otp_request', undefined, { identifier, channel, purpose, deviceId, ip });
+    return this.exposeDevCode ? { devCode: code } : {};
   }
 
   async requestOtp(dto: RequestOtpDto, ip?: string) {
@@ -153,15 +185,102 @@ export class AuthService {
       deviceId: dto.deviceId,
     });
     await this.audit('auth.login', 'driver', driver.id, { deviceId: dto.deviceId });
-    return tokens;
+    // Le profil accompagne les jetons : l'application chauffeur affiche le nom des l'ecran suivant,
+    // sans second aller-retour reseau.
+    return {
+      ...tokens,
+      driver: {
+        id: driver.id,
+        firstName: driver.firstName,
+        lastName: driver.lastName,
+        phone: driver.phone,
+        status: driver.status,
+      },
+    };
   }
 
   // ---------------------------------------------------------------------
   // Admin : mot de passe + OTP e-mail conditionnel (nouvel appareil)
   // ---------------------------------------------------------------------
 
+  async requestSuperAdminRegistration(dto: RequestSuperAdminRegistrationDto, ip?: string) {
+    const email = this.normalizeEmail(dto.email);
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    // L'étape de vérification refuse déjà un e-mail déjà pris : le dire ici évite d'attendre en vain
+    // un code qui ne serait jamais envoyé.
+    if (existing) {
+      throw new BadRequestException('Un compte existe déjà pour cet e-mail. Connectez-vous ou activez votre invitation.');
+    }
+    const { devCode } = await this.issueOtp(email, OtpChannel.EMAIL, OtpPurpose.LOGIN, undefined, ip);
+    return { message: 'Un code de vérification a été envoyé à cette adresse.', ...(devCode ? { devCode } : {}) };
+  }
+
+  async verifySuperAdminRegistration(dto: VerifySuperAdminRegistrationDto) {
+    const email = this.normalizeEmail(dto.email);
+    if (await this.prisma.user.findUnique({ where: { email } })) {
+      throw new BadRequestException('Un compte existe déjà pour cet e-mail');
+    }
+    const ok = await this.verifyOtpCode(email, OtpChannel.EMAIL, dto.code);
+    if (!ok) throw new UnauthorizedException(GENERIC_OTP_ERROR);
+    // Le rôle peut manquer si la base n'a jamais été seedée : on le crée plutôt que de renvoyer un 500.
+    const role = await this.prisma.role.upsert({
+      where: { name: RoleName.SUPER_ADMIN },
+      update: {},
+      create: { name: RoleName.SUPER_ADMIN },
+    });
+    // Hash calculé hors transaction : argon2 est volontairement lent, inutile de tenir la transaction ouverte.
+    const passwordHash = await argon2.hash(dto.password);
+    const user = await this.prisma.$transaction(async (tx) => {
+      const organization = await tx.organization.create({
+        data: { name: `Espace de ${dto.firstName.trim()} ${dto.lastName.trim()}` },
+      });
+      return tx.user.create({ data: {
+        organizationId: organization.id,
+        email,
+        firstName: dto.firstName.trim(),
+        lastName: dto.lastName.trim(),
+        passwordHash,
+        roleId: role.id,
+        isActive: true,
+      } });
+    });
+    await this.audit('super_admin.registered', 'user', user.id, { email });
+    return { message: 'Compte Super Master activé. Vous pouvez maintenant vous connecter.' };
+  }
+
+  async requestAdminActivation(dto: RequestAdminActivationDto, ip?: string) {
+    const email = this.normalizeEmail(dto.email);
+    const invited = await this.prisma.user.findUnique({ where: { email } });
+    let devCode: string | undefined;
+    if (invited && !invited.isActive && !invited.deletedAt) {
+      ({ devCode } = await this.issueOtp(email, OtpChannel.EMAIL, OtpPurpose.LOGIN, undefined, ip));
+    }
+    // Réponse générique : ne confirme jamais l'existence d'une invitation.
+    return { message: 'Si une invitation valide existe, un code a été envoyé.', ...(devCode ? { devCode } : {}) };
+  }
+
+  async verifyAdminActivation(dto: VerifyAdminActivationDto) {
+    const email = this.normalizeEmail(dto.email);
+    const invited = await this.prisma.user.findUnique({ where: { email } });
+    if (!invited || invited.isActive || invited.deletedAt) throw new UnauthorizedException(GENERIC_OTP_ERROR);
+    const ok = await this.verifyOtpCode(email, OtpChannel.EMAIL, dto.code);
+    if (!ok) throw new UnauthorizedException(GENERIC_OTP_ERROR);
+    await this.prisma.user.update({
+      where: { id: invited.id },
+      data: {
+        firstName: dto.firstName.trim(),
+        lastName: dto.lastName.trim(),
+        passwordHash: await argon2.hash(dto.password),
+        isActive: true,
+      },
+    });
+    await this.audit('admin.invitation.accepted', 'user', invited.id, { email });
+    return { message: 'Compte activé. Vous pouvez maintenant vous connecter.' };
+  }
+
   async adminLogin(dto: AdminLoginDto, ip?: string) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email }, include: { role: true } });
+    const email = this.normalizeEmail(dto.email);
+    const user = await this.prisma.user.findUnique({ where: { email }, include: { role: true } });
     if (!user || user.deletedAt || !user.isActive) {
       throw new UnauthorizedException(GENERIC_LOGIN_ERROR);
     }
@@ -180,8 +299,12 @@ export class AuthService {
     }
 
     if (!knownDevice) {
-      await this.issueOtp(user.email, OtpChannel.EMAIL, OtpPurpose.NEW_DEVICE, dto.deviceId, ip);
-      return { requiresOtp: true, message: 'Nouvel appareil détecté, un code a été envoyé par e-mail.' };
+      const { devCode } = await this.issueOtp(user.email, OtpChannel.EMAIL, OtpPurpose.NEW_DEVICE, dto.deviceId, ip);
+      return {
+        requiresOtp: true,
+        message: 'Nouvel appareil détecté, un code a été envoyé par e-mail.',
+        ...(devCode ? { devCode } : {}),
+      };
     }
 
     const tokens = await this.issueTokenPair({
@@ -196,10 +319,11 @@ export class AuthService {
   }
 
   async adminVerifyOtp(dto: AdminVerifyOtpDto) {
-    const ok = await this.verifyOtpCode(dto.email, OtpChannel.EMAIL, dto.code);
+    const email = this.normalizeEmail(dto.email);
+    const ok = await this.verifyOtpCode(email, OtpChannel.EMAIL, dto.code);
     if (!ok) throw new UnauthorizedException(GENERIC_OTP_ERROR);
 
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email }, include: { role: true } });
+    const user = await this.prisma.user.findUnique({ where: { email }, include: { role: true } });
     if (!user || user.deletedAt || !user.isActive) {
       throw new UnauthorizedException(GENERIC_LOGIN_ERROR);
     }

@@ -8,6 +8,8 @@ import { AdminLoginDto } from './dto/admin-login.dto';
 import { AdminVerifyOtpDto } from './dto/admin-verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { RequestAdminActivationDto, VerifyAdminActivationDto } from './dto/activate-admin.dto';
+import { RequestSuperAdminRegistrationDto, VerifySuperAdminRegistrationDto } from './dto/register-super-admin.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser, AuthenticatedPrincipal } from '../common/decorators/current-user.decorator';
 
@@ -50,6 +52,34 @@ export class AuthController {
   @ApiOperation({ summary: "Vérifier l'OTP admin (nouvel appareil) et obtenir les tokens" })
   adminVerifyOtp(@Body() dto: AdminVerifyOtpDto) {
     return this.auth.adminVerifyOtp(dto);
+  }
+
+  @Public()
+  @Post('admin/activate/request')
+  @ApiOperation({ summary: "Demander l’OTP d’activation d’un compte admin invité" })
+  requestAdminActivation(@Body() dto: RequestAdminActivationDto, @Ip() ip: string) {
+    return this.auth.requestAdminActivation(dto, ip);
+  }
+
+  @Public()
+  @Post('admin/activate/verify')
+  @ApiOperation({ summary: "Valider l’OTP et activer le compte admin invité" })
+  verifyAdminActivation(@Body() dto: VerifyAdminActivationDto) {
+    return this.auth.verifyAdminActivation(dto);
+  }
+
+  @Public()
+  @Post('admin/register/request')
+  @ApiOperation({ summary: "Demander l’OTP de création d’un compte Super Master" })
+  requestSuperAdminRegistration(@Body() dto: RequestSuperAdminRegistrationDto, @Ip() ip: string) {
+    return this.auth.requestSuperAdminRegistration(dto, ip);
+  }
+
+  @Public()
+  @Post('admin/register/verify')
+  @ApiOperation({ summary: "Valider l’OTP et créer le compte Super Master et son organisation" })
+  verifySuperAdminRegistration(@Body() dto: VerifySuperAdminRegistrationDto) {
+    return this.auth.verifySuperAdminRegistration(dto);
   }
 
   @Public()

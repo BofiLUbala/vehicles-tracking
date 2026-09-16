@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildReportDownloadUrl } from '@/features/reports/api';
+import { REPORT_EXPORT_MAX_ROWS, buildReportDownloadUrl } from '@/features/reports/api';
 
 describe('buildReportDownloadUrl', () => {
   it('builds a missions download URL with the format and no filters', () => {
-    expect(buildReportDownloadUrl('missions', {}, 'csv')).toBe('/api/reports/missions?format=csv');
+    // `limit` est toujours present : un telechargement doit ramener le maximum autorise par le
+    // serveur, pas la taille d'une page d'apercu.
+    expect(buildReportDownloadUrl('missions', {}, 'csv')).toBe(
+      `/api/reports/missions?format=csv&limit=${REPORT_EXPORT_MAX_ROWS}`,
+    );
   });
 
   it('includes active mission filters as query params', () => {
@@ -22,16 +26,19 @@ describe('buildReportDownloadUrl', () => {
       status: 'COMPLETED',
       locationId: 'l1',
       format: 'xlsx',
+      limit: String(REPORT_EXPORT_MAX_ROWS),
     });
   });
 
   it('omits undefined filters from the URL', () => {
     const url = buildReportDownloadUrl('missions', { vehicleId: 'v1' }, 'pdf');
-    expect(url).toBe('/api/reports/missions?vehicleId=v1&format=pdf');
+    expect(url).toBe(`/api/reports/missions?vehicleId=v1&format=pdf&limit=${REPORT_EXPORT_MAX_ROWS}`);
   });
 
   it('builds a fuel download URL with only the fuel-relevant filters', () => {
     const url = buildReportDownloadUrl('fuel', { from: '2026-02-01', vehicleId: 'v9' }, 'csv');
-    expect(url).toBe('/api/reports/fuel?from=2026-02-01&vehicleId=v9&format=csv');
+    expect(url).toBe(
+      `/api/reports/fuel?from=2026-02-01&vehicleId=v9&format=csv&limit=${REPORT_EXPORT_MAX_ROWS}`,
+    );
   });
 });

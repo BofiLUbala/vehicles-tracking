@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { getDeviceId } from '@/lib/device-id';
 import { loginAdmin, verifyAdminOtp } from '@/features/auth/api';
 import { loginSchema, otpSchema, type LoginFormValues, type OtpFormValues } from '@/features/auth/schemas';
+import Link from 'next/link';
 
 type Step = 'credentials' | 'otp';
 
@@ -21,6 +22,7 @@ export function LoginForm() {
 
   const [step, setStep] = useState<Step>('credentials');
   const [email, setEmail] = useState('');
+  const [devCode, setDevCode] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -35,6 +37,7 @@ export function LoginForm() {
       const result = await loginAdmin(values.email, values.password, deviceId);
       if (result.requiresOtp) {
         setEmail(values.email);
+        setDevCode(result.devCode ?? null);
         setStep('otp');
       } else {
         router.push(next);
@@ -104,6 +107,10 @@ export function LoginForm() {
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? 'Connexion…' : 'Se connecter'}
             </Button>
+            <div className="space-y-1 text-center text-sm text-muted-foreground">
+              <p><Link className="text-primary underline" href="/signup">Créer mon compte Super Master</Link></p>
+              <p>Invité par un administrateur ? <Link className="text-primary underline" href="/activate-invitation">Activer mon invitation</Link></p>
+            </div>
           </form>
         ) : (
           <form key="otp" className="space-y-4" onSubmit={otpForm.handleSubmit(onSubmitOtp)} noValidate>
@@ -121,6 +128,11 @@ export function LoginForm() {
                 <p className="text-sm text-destructive">{otpForm.formState.errors.code.message}</p>
               )}
             </div>
+            {devCode && (
+              <p className="rounded-md bg-muted p-2 text-sm">
+                Mode développement — code : <strong>{devCode}</strong>
+              </p>
+            )}
             {formError && <p className="text-sm text-destructive">{formError}</p>}
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? 'Vérification…' : 'Vérifier'}
@@ -133,6 +145,7 @@ export function LoginForm() {
               onClick={() => {
                 setStep('credentials');
                 setFormError(null);
+                setDevCode(null);
               }}
             >
               Retour

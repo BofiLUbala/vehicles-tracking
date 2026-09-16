@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { DriversModule } from './drivers/drivers.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { LocationsModule } from './locations/locations.module';
+import { ZonesModule } from './zones/zones.module';
 import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
 import { FilesModule } from './files/files.module';
@@ -32,6 +33,7 @@ import { ReportsModule } from './reports/reports.module';
     DriversModule,
     VehiclesModule,
     LocationsModule,
+    ZonesModule,
     RolesModule,
     UsersModule,
     FilesModule,

@@ -1,0 +1,75 @@
+{
+  "expo": {
+    "name": "Tracking Vehicles Driver",
+    "slug": "tracking-vehicles-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "trackingvehicles",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.trackingvehicles.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "L'application a besoin de votre position pour valider les étapes de collecte et de dépôt de déchets.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Le suivi en arrière-plan est requis pendant vos missions actives pour tracer l'itinéraire du véhicule.",
+        "NSCameraUsageDescription": "L'appareil photo est requis pour scanner les QR codes sur les sites et prendre les photos de preuve.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F172A"
+      },
+      "package": "com.trackingvehicles.tracking_vehicles_mobile",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "CAMERA",
+        "INTERNET"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Le suivi en arrière-plan est requis pendant vos missions actives.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "L'appareil photo est nécessaire pour scanner les QR codes et photographier les preuves de collecte."
+        }
+      ],
+      "expo-secure-store",
+      "expo-sqlite"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "tracking-vehicles-driver"
+      }
+    }
+  }
+}

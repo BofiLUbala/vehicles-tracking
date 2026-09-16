@@ -49,12 +49,25 @@ export class ReportsController {
     return this.send(res, result);
   }
 
-  /** `format=json` renvoie le tableau directement (Nest sérialise) ; les autres formats écrivent le
-   * fichier binaire/texte avec les en-têtes de téléchargement appropriés. */
+  /**
+   * `format=json` renvoie une enveloppe `{ data, meta }` : `meta.truncated` indique explicitement
+   * qu'il reste des lignes au-delà de celles renvoyées — auparavant un rapport plafonné était
+   * indiscernable d'un rapport complet. Les formats fichier (csv/xlsx/pdf) ne peuvent pas porter
+   * cette enveloppe : la même information part alors dans les en-têtes `X-Report-*`, également
+   * présents sur la réponse JSON.
+   */
   private send(res: Response, result: ExportResult) {
+    res.set({
+      'X-Report-Limit': String(result.meta.limit),
+      'X-Report-Offset': String(result.meta.offset),
+      'X-Report-Returned': String(result.meta.returned),
+      'X-Report-Has-More': String(result.meta.hasMore),
+      'X-Report-Max-Rows': String(result.meta.maxRows),
+    });
+
     if (Array.isArray(result.body)) {
       res.set('Content-Type', result.contentType);
-      return result.body;
+      return { data: result.body, meta: result.meta };
     }
     res.set({
       'Content-Type': result.contentType,

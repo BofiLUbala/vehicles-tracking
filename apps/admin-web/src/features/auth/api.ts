@@ -1,6 +1,8 @@
 export interface LoginResult {
   requiresOtp: boolean;
   message?: string;
+  /** Code OTP renvoyé par l'API en développement uniquement (OTP_DEV_EXPOSE_CODE=true). */
+  devCode?: string;
 }
 
 async function parseJsonSafe(res: Response): Promise<Record<string, unknown>> {

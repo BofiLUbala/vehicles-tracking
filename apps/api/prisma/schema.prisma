@@ -118,7 +118,18 @@ enum AlertType {
   LATE_ARRIVAL
   FUEL_ANOMALY
   DEVICE_OFFLINE
+  /// Position relevée hors des zones autorisées (ou dans une zone interdite) de l'organisation.
+  OUT_OF_ZONE
+  /// Horodatage d'un relevé incohérent avec l'heure serveur (horloge de l'appareil manipulée).
+  INCONSISTENT_TIME
   OTHER
+}
+
+/// Nature d'une zone de géofencing : périmètre dans lequel les véhicules doivent rester,
+/// ou périmètre dans lequel ils ne doivent pas entrer.
+enum ZoneKind {
+  ALLOWED
+  FORBIDDEN
 }
 
 enum AlertLevel {
@@ -157,6 +168,7 @@ model Organization {
   vehicles  Vehicle[]
   locations Location[]
   missions  Mission[]
+  zones     Zone[]
 
   @@map("organizations")
 }
@@ -358,6 +370,35 @@ model DriverVehicleAssignment {
 // =====================================================================
 // Points géographiques
 // =====================================================================
+
+/// Zone de géofencing (section 15 du cahier des charges : « chauffeur hors zone », +30 points).
+///
+/// Le polygone est stocké en colonne PostGIS `geom` (SRID 4326) écrite en SQL brut — Prisma ne
+/// modélise pas les types géométriques, même motif que `Location.geom`. `coordinates` conserve le
+/// polygone en GeoJSON pour pouvoir le relire et le réafficher sans dépendre de PostGIS.
+model Zone {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  kind           ZoneKind @default(ALLOWED)
+
+  /// Anneau extérieur du polygone en GeoJSON : [[lng, lat], ...], premier point == dernier point.
+  coordinates Json
+
+  /// Colonne géométrique PostGIS (SRID 4326). Écrite via $executeRaw, voir ZonesService.
+  geom Unsupported("geometry(Polygon, 4326)")?
+
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, isActive])
+  @@map("zones")
+}
 
 model Location {
   id             String         @id @default(uuid())

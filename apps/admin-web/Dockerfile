@@ -10,10 +10,12 @@ COPY . .
 # surcharger via des build args si des valeurs différentes sont nécessaires en prod.
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3001/api/v1
 ARG NEXT_PUBLIC_API_WS_URL=http://localhost:3001
-ARG NEXT_PUBLIC_MAP_STYLE_URL=https://demotiles.maplibre.org/style.json
+ARG NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
+ARG NEXT_PUBLIC_MAP_TERRAIN_URL=https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_WS_URL=$NEXT_PUBLIC_API_WS_URL
 ENV NEXT_PUBLIC_MAP_STYLE_URL=$NEXT_PUBLIC_MAP_STYLE_URL
+ENV NEXT_PUBLIC_MAP_TERRAIN_URL=$NEXT_PUBLIC_MAP_TERRAIN_URL
 RUN npm run build
 
 # --- Stage 2 : runtime (image slim, sortie "standalone" de Next.js) ---

@@ -17,7 +17,7 @@ vi.mock('@/features/reports/api', async () => {
 });
 
 import { ReportsPageClient } from '@/features/reports/reports-page-client';
-import type { FuelReportRow, MissionReportRow } from '@/features/reports/types';
+import type { FuelReportRow, MissionReportRow, ReportMeta, ReportPage } from '@/features/reports/types';
 
 function makeMissionRow(overrides: Partial<MissionReportRow> = {}): MissionReportRow {
   return {
@@ -55,6 +55,21 @@ function makeFuelRow(overrides: Partial<FuelReportRow> = {}): FuelReportRow {
   };
 }
 
+function page<T>(rows: T[], overrides: Partial<ReportMeta> = {}): ReportPage<T> {
+  return {
+    rows,
+    meta: {
+      limit: 200,
+      offset: 0,
+      returned: rows.length,
+      hasMore: false,
+      truncated: false,
+      maxRows: 5000,
+      ...overrides,
+    },
+  };
+}
+
 function renderWithClient(children: ReactNode) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
@@ -67,18 +82,46 @@ describe('ReportsPageClient', () => {
   });
 
   it('renders mission report rows from the mocked API response by default', async () => {
-    fetchMissionsReportMock.mockResolvedValue([makeMissionRow()]);
+    fetchMissionsReportMock.mockResolvedValue(page([makeMissionRow()]));
 
     renderWithClient(<ReportsPageClient />);
 
     expect(await screen.findByText('Terminée')).toBeInTheDocument();
     expect(screen.getByText('AB-123-CD')).toBeInTheDocument();
     expect(screen.getByText('Jean Dupont')).toBeInTheDocument();
-    expect(fetchMissionsReportMock).toHaveBeenCalledWith({});
+    expect(fetchMissionsReportMock).toHaveBeenCalledWith({}, { offset: 0 });
+  });
+
+  it('warns that the report is incomplete and pages forward when more rows exist', async () => {
+    fetchMissionsReportMock.mockResolvedValue(page([makeMissionRow()], { hasMore: true, truncated: true }));
+    const user = userEvent.setup();
+
+    renderWithClient(<ReportsPageClient />);
+
+    // Le point du correctif : un rapport plafonne ne doit plus etre indiscernable d'un rapport complet.
+    expect(await screen.findByText(/résultats incomplets/i)).toBeInTheDocument();
+    expect(screen.getByText(/Lignes 1 à 1/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Page suivante' }));
+
+    await waitFor(() =>
+      expect(fetchMissionsReportMock).toHaveBeenLastCalledWith({}, { offset: 200 }),
+    );
+  });
+
+  it('does not offer a next page when the report is complete', async () => {
+    fetchMissionsReportMock.mockResolvedValue(page([makeMissionRow()]));
+
+    renderWithClient(<ReportsPageClient />);
+
+    expect(await screen.findByText(/Lignes 1 à 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/résultats incomplets/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Page suivante' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Page précédente' })).toBeDisabled();
   });
 
   it('calls the missions API with the correct params when a filter is set', async () => {
-    fetchMissionsReportMock.mockResolvedValue([makeMissionRow()]);
+    fetchMissionsReportMock.mockResolvedValue(page([makeMissionRow()]));
     const user = userEvent.setup();
 
     renderWithClient(<ReportsPageClient />);
@@ -89,13 +132,16 @@ describe('ReportsPageClient', () => {
     await user.type(vehicleInput, 'v-42');
 
     await waitFor(() =>
-      expect(fetchMissionsReportMock).toHaveBeenLastCalledWith(expect.objectContaining({ vehicleId: 'v-42' })),
+      expect(fetchMissionsReportMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ vehicleId: 'v-42' }),
+        expect.objectContaining({ offset: 0 }),
+      ),
     );
   });
 
   it('switches to the fuel report tab and loads fuel rows', async () => {
-    fetchMissionsReportMock.mockResolvedValue([makeMissionRow()]);
-    fetchFuelReportMock.mockResolvedValue([makeFuelRow()]);
+    fetchMissionsReportMock.mockResolvedValue(page([makeMissionRow()]));
+    fetchFuelReportMock.mockResolvedValue(page([makeFuelRow()]));
     const user = userEvent.setup();
 
     renderWithClient(<ReportsPageClient />);
@@ -105,11 +151,11 @@ describe('ReportsPageClient', () => {
     await user.click(screen.getByRole('tab', { name: 'Carburant' }));
 
     expect(await screen.findByText('40.5 L')).toBeInTheDocument();
-    expect(fetchFuelReportMock).toHaveBeenCalledWith({});
+    expect(fetchFuelReportMock).toHaveBeenCalledWith({}, { offset: 0 });
   });
 
   it('renders export buttons pointing at the report download proxy with active filters', async () => {
-    fetchMissionsReportMock.mockResolvedValue([makeMissionRow()]);
+    fetchMissionsReportMock.mockResolvedValue(page([makeMissionRow()]));
     const user = userEvent.setup();
 
     renderWithClient(<ReportsPageClient />);
@@ -120,10 +166,13 @@ describe('ReportsPageClient', () => {
     await user.type(vehicleInput, 'v-42');
 
     await waitFor(() =>
-      expect(fetchMissionsReportMock).toHaveBeenLastCalledWith(expect.objectContaining({ vehicleId: 'v-42' })),
+      expect(fetchMissionsReportMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ vehicleId: 'v-42' }),
+        expect.objectContaining({ offset: 0 }),
+      ),
     );
 
     const csvLink = screen.getByRole('link', { name: 'Exporter CSV' });
-    expect(csvLink).toHaveAttribute('href', '/api/reports/missions?vehicleId=v-42&format=csv');
+    expect(csvLink).toHaveAttribute('href', '/api/reports/missions?vehicleId=v-42&format=csv&limit=5000');
   });
 });

@@ -9,11 +9,16 @@ import { fetchVehicleTrace } from '@/features/tracking/api';
 import { TrackingLegend } from '@/features/tracking/legend';
 import { TracePanel } from '@/features/tracking/trace-panel';
 import type { LiveVehicle } from '@/features/tracking/types';
+import { RegionSelector } from '@/features/geo/region-selector';
+import { EMPTY_SELECTION, resolveTarget, selectionPath, type RegionSelection } from '@/features/geo/selection';
+import { presetFor, type MapViewMode } from '@/features/geo/view-mode';
+import { isStyleUsable, syncCamera } from '@/features/geo/map-camera';
+import { MAP_STYLE_URL } from '@/features/geo/map-style';
 
-const MAP_STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL ?? 'https://demotiles.maplibre.org/style.json';
 const TRACE_SOURCE_ID = 'vehicle-trace';
 const TRACE_LAYER_ID = 'vehicle-trace-line';
-const DEFAULT_CENTER: [number, number] = [2.3522, 48.8566]; // Paris, à défaut de véhicules
+// Vue d'ouverture : la RDC entière, à défaut de véhicules positionnés.
+const DEFAULT_CENTER: [number, number] = [23.66, -2.88];
 
 interface TrackingMapProps {
   vehicles: LiveVehicle[];
@@ -27,9 +32,16 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
   const [mapReady, setMapReady] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [traceVisible, setTraceVisible] = useState(false);
+  const [region, setRegion] = useState<RegionSelection>(EMPTY_SELECTION);
+  const [viewMode, setViewMode] = useState<MapViewMode>('auto');
+  const [regionPanelOpen, setRegionPanelOpen] = useState(true);
   const fittedOnceRef = useRef(false);
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) ?? null;
+  const regionTarget = resolveTarget(region);
+  const preset = presetFor(viewMode, regionTarget?.level ?? 'world');
+  const regionPath = selectionPath(region);
+  const regionKey = regionTarget ? `${regionTarget.center.join(',')}:${regionTarget.zoom}` : '';
 
   const traceQuery = useQuery({
     queryKey: ['tracking', 'vehicles', selectedVehicleId, 'trace'],
@@ -44,10 +56,20 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
       container: containerRef.current,
       style: MAP_STYLE_URL,
       center: DEFAULT_CENTER,
-      zoom: 5,
+      zoom: 3.4,
     });
+    // La projection ne fait pas partie des options du constructeur : elle est posée au chargement du
+    // style par `applyPreset` (globe par défaut, plan dès qu'une province/ville est sélectionnée).
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    map.on('load', () => setMapReady(true));
+    // Ni `load` ni `isStyleLoaded()` ne conviennent comme signal de disponibilité : tous deux
+    // attendent un rendu complet (sprite, glyphes, tuiles) qui peut ne jamais aboutir avec un fond
+    // de carte public, ce qui figerait la carte sur sa vue initiale. On écoute `styledata` (et non
+    // `once`) jusqu'à ce que le style soit exploitable : les couches ajoutées ensuite (trace GPS)
+    // exigent un style appliqué.
+    const markReady = () => {
+      if (isStyleUsable(map)) setMapReady(true);
+    };
+    map.on('styledata', markReady);
     mapRef.current = map;
 
     return () => {
@@ -56,6 +78,20 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
       markersRef.current.clear();
     };
   }, []);
+
+  // Projection / relief / bâtiments 3D + recadrage sur la région choisie. `syncCamera` est
+  // idempotent : il ne rejoue le vol de caméra que si le lieu sélectionné a changé.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (regionTarget) {
+      // Une sélection explicite prime sur le cadrage automatique sur les véhicules.
+      fittedOnceRef.current = true;
+    }
+    syncCamera(map, preset, regionTarget);
+    // `regionTarget` est recalculé à chaque rendu : on dépend de sa clé stable (lieu + zoom).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, preset, regionKey]);
 
   // Synchronise les marqueurs avec la liste de véhicules (ajout/maj/suppression incrémentale).
   useEffect(() => {
@@ -140,7 +176,36 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" data-testid="maplibre-container" />
 
-      <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-3">
+      <div className="pointer-events-none absolute left-4 top-4 flex max-w-[min(46rem,calc(100%-2rem))] flex-col gap-3">
+        <div className="pointer-events-auto rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-xs"
+            aria-expanded={regionPanelOpen}
+            onClick={() => setRegionPanelOpen((open) => !open)}
+          >
+            <span className="truncate">
+              <span className="font-medium">Région</span>
+              {regionPath.length > 0 && (
+                <span className="text-muted-foreground"> — {regionPath.join(' › ')}</span>
+              )}
+            </span>
+            <span aria-hidden className="text-muted-foreground">
+              {regionPanelOpen ? '▲' : '▼'}
+            </span>
+          </button>
+          {regionPanelOpen && (
+            <div className="border-t border-border px-3 pb-3 pt-2">
+              <RegionSelector
+                dense
+                selection={region}
+                onSelectionChange={setRegion}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+              />
+            </div>
+          )}
+        </div>
         <TrackingLegend />
         {!connected && (
           <div className="pointer-events-auto rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">

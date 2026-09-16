@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
   }
 
   if (data.requiresOtp) {
-    return NextResponse.json({ requiresOtp: true, message: data.message });
+    // `devCode` n'est renseigné par l'API qu'en développement (OTP_DEV_EXPOSE_CODE=true).
+    return NextResponse.json({ requiresOtp: true, message: data.message, devCode: data.devCode });
   }
 
   const res = NextResponse.json({ requiresOtp: false });

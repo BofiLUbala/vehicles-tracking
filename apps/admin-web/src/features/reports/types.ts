@@ -65,4 +65,22 @@ export interface FuelReportRow {
   createdAt: string;
 }
 
+/**
+ * Etat de pagination renvoye par l'API avec chaque rapport (`meta` de l'enveloppe JSON).
+ * `truncated` dit explicitement qu'il reste des lignes au-dela de celles affichees.
+ */
+export interface ReportMeta {
+  limit: number;
+  offset: number;
+  returned: number;
+  hasMore: boolean;
+  truncated: boolean;
+  maxRows: number;
+}
+
+export interface ReportPage<T> {
+  rows: T[];
+  meta: ReportMeta;
+}
+
 export type ReportType = 'missions' | 'fuel';

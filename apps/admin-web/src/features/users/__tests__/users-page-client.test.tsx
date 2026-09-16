@@ -1,13 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 const fetchUsersMock = vi.fn();
+const inviteAdminMock = vi.fn();
 const useCurrentUserMock = vi.fn();
 
 vi.mock('@/features/users/api', () => ({
   fetchUsers: (...args: unknown[]) => fetchUsersMock(...args),
+  inviteAdmin: (...args: unknown[]) => inviteAdminMock(...args),
 }));
 
 vi.mock('@/features/auth/current-user', () => ({
@@ -38,6 +40,7 @@ function renderWithClient(children: ReactNode) {
 describe('UsersPageClient', () => {
   beforeEach(() => {
     fetchUsersMock.mockReset();
+    inviteAdminMock.mockReset();
     useCurrentUserMock.mockReset();
   });
 
@@ -51,7 +54,7 @@ describe('UsersPageClient', () => {
     expect(screen.getByText('Ada Admin')).toBeInTheDocument();
   });
 
-  it('shows management actions (disabled) to a SUPER_ADMIN', async () => {
+  it('lets a SUPER_ADMIN enter an email and invite an administrator', async () => {
     fetchUsersMock.mockResolvedValue([makeUser()]);
     useCurrentUserMock.mockReturnValue({ data: { id: 'me', role: 'SUPER_ADMIN', organizationId: 'org1' } });
 
@@ -62,6 +65,8 @@ describe('UsersPageClient', () => {
     const inviteButton = screen.getByRole('button', { name: 'Inviter un utilisateur' });
     expect(inviteButton).toBeInTheDocument();
     expect(inviteButton).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText('nouvel.admin@exemple.com'), { target: { value: 'new@example.com' } });
+    expect(inviteButton).toBeEnabled();
   });
 
   it('hides management actions from a non-SUPER_ADMIN', async () => {

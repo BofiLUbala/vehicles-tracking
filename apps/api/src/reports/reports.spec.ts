@@ -126,6 +126,35 @@ describe('ReportsService (intégration DB + MinIO réels)', () => {
     return { driver, vehicle, location, mission };
   }
 
+  it('pagination : limit/offset découpent le rapport et `truncated` signale les lignes restantes', async () => {
+    // Deux missions au moins existent après deux fixtures : de quoi observer une page incomplète.
+    await setupFixture();
+    await setupFixture();
+
+    const firstPage = await reports.missionsReport(DEMO_ORG_ID, { limit: 1 } as any);
+    expect((firstPage.body as any[])).toHaveLength(1);
+    expect(firstPage.meta.returned).toBe(1);
+    expect(firstPage.meta.limit).toBe(1);
+    expect(firstPage.meta.offset).toBe(0);
+    // Le point central du correctif : l'appelant sait que ce qu'il lit est incomplet.
+    expect(firstPage.meta.hasMore).toBe(true);
+    expect(firstPage.meta.truncated).toBe(true);
+
+    const secondPage = await reports.missionsReport(DEMO_ORG_ID, { limit: 1, offset: 1 } as any);
+    expect(secondPage.meta.offset).toBe(1);
+    expect((secondPage.body as any[])[0].id).not.toBe((firstPage.body as any[])[0].id);
+  });
+
+  it("pagination : un rapport complet n'est pas marqué tronqué", async () => {
+    const { vehicle } = await setupFixture();
+
+    const complete = await reports.fuelReport(DEMO_ORG_ID, { vehicleId: vehicle.id, limit: 500 } as any);
+    expect(complete.meta.hasMore).toBe(false);
+    expect(complete.meta.truncated).toBe(false);
+    expect(complete.meta.returned).toBe((complete.body as any[]).length);
+    expect(complete.meta.maxRows).toBe(5000);
+  });
+
   it('rapport missions (json) : liste et filtre par véhicule/statut/point de collecte', async () => {
     const { vehicle, location, mission } = await setupFixture();
 

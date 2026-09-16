@@ -4,12 +4,13 @@ import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import maplibregl, { Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { MAP_STYLE_URL } from '@/features/geo/map-style';
 import { fetchVehicleTrace } from '@/features/tracking/api';
 import type { LocationDto } from '@/features/locations/types';
 import type { MissionStepDto } from '@/features/missions/types';
 
-const MAP_STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL ?? 'https://demotiles.maplibre.org/style.json';
-const DEFAULT_CENTER: [number, number] = [2.3522, 48.8566];
+// RDC par défaut, à défaut d'étapes ou de trace positionnées.
+const DEFAULT_CENTER: [number, number] = [23.66, -2.88];
 const TRACE_SOURCE_ID = 'mission-vehicle-trace';
 const TRACE_LAYER_ID = 'mission-vehicle-trace-line';
 

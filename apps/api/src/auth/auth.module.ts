@@ -11,6 +11,7 @@ import { StubWhatsappSender } from './senders/stub-whatsapp.sender';
 import { StubEmailSender } from './senders/stub-email.sender';
 import { WhatsappCloudApiSender } from './senders/whatsapp-cloud-api.sender';
 import { SmtpEmailSender } from './senders/smtp-email.sender';
+import { FallbackEmailSender } from './senders/fallback-email.sender';
 
 // Mode par canal (stub par défaut journalise les codes au lieu d'appeler des API externes).
 // OTP_CHANNEL_MODE reste un interrupteur global rétrocompatible ; OTP_WHATSAPP_MODE/OTP_EMAIL_MODE
@@ -35,6 +36,7 @@ const isEmailLive = (config: ConfigService) =>
     StubEmailSender,
     WhatsappCloudApiSender,
     SmtpEmailSender,
+    FallbackEmailSender,
     {
       provide: OTP_SENDER_WHATSAPP,
       useFactory: (config: ConfigService, stub: StubWhatsappSender, live: WhatsappCloudApiSender) =>
@@ -43,9 +45,9 @@ const isEmailLive = (config: ConfigService) =>
     },
     {
       provide: OTP_SENDER_EMAIL,
-      useFactory: (config: ConfigService, stub: StubEmailSender, live: SmtpEmailSender) =>
+      useFactory: (config: ConfigService, stub: StubEmailSender, live: FallbackEmailSender) =>
         isEmailLive(config) ? live : stub,
-      inject: [ConfigService, StubEmailSender, SmtpEmailSender],
+      inject: [ConfigService, StubEmailSender, FallbackEmailSender],
     },
   ],
   exports: [AuthService],

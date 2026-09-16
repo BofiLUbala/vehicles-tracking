@@ -9,15 +9,73 @@ import { toCsv } from './export/csv.util';
 import { toXlsx } from './export/xlsx.util';
 import { toPdf } from './export/pdf.util';
 
-/** Garde-fou volume (section 20 ne fixe pas de limite, mais un export illimité de `gps_positions`
- * — table à plus haut volume de l'appli, voir TODO partitionnement — pourrait épuiser la mémoire
- * du process ; voir docs/PHASE5_NOTES.md pour la justification et la piste de pagination future). */
+/** Garde-fou volume : un export illimité de `gps_positions` — table à plus haut volume de l'appli —
+ * épuiserait la mémoire du process. `limit` est plafonné à cette valeur. */
 const REPORT_MAX_ROWS = 5000;
+
+/** Lignes renvoyées par défaut quand l'appelant ne précise pas `limit`. */
+const REPORT_DEFAULT_ROWS = 1000;
+
+/**
+ * Etat de pagination joint à chaque rapport.
+ *
+ * `truncated` répond à la question « ce que je regarde est-il complet ? » : auparavant un rapport
+ * plafonné renvoyait silencieusement les N lignes les plus récentes, sans aucun moyen pour
+ * l'appelant de savoir qu'il en manquait.
+ */
+export interface ReportMeta {
+  limit: number;
+  offset: number;
+  returned: number;
+  /** Des lignes existent au-delà de `offset + returned`. */
+  hasMore: boolean;
+  /** Synonyme explicite de `hasMore`, du point de vue « ce rapport est incomplet ». */
+  truncated: boolean;
+  /** Plafond dur du serveur, pour que l'appelant sache jusqu'où `limit` peut monter. */
+  maxRows: number;
+}
 
 export interface ExportResult {
   contentType: string;
   filename: string;
   body: Buffer | string | Record<string, unknown>[];
+  meta: ReportMeta;
+}
+
+interface Paging {
+  limit: number;
+  offset: number;
+}
+
+interface PagedRows<T> {
+  rows: T[];
+  meta: ReportMeta;
+}
+
+/** Résout `limit`/`offset` en bornant `limit` au plafond serveur. */
+function resolvePaging(query: { limit?: number; offset?: number }): Paging {
+  const limit = Math.min(query.limit ?? REPORT_DEFAULT_ROWS, REPORT_MAX_ROWS);
+  return { limit, offset: query.offset ?? 0 };
+}
+
+/**
+ * Une ligne de plus que `limit` est demandée à la base : sa présence prouve qu'il en reste au-delà,
+ * sans avoir à exécuter un `count(*)` séparé sur des tables volumineuses.
+ */
+function toPaged<T>(fetched: T[], paging: Paging): PagedRows<T> {
+  const hasMore = fetched.length > paging.limit;
+  const rows = hasMore ? fetched.slice(0, paging.limit) : fetched;
+  return {
+    rows,
+    meta: {
+      limit: paging.limit,
+      offset: paging.offset,
+      returned: rows.length,
+      hasMore,
+      truncated: hasMore,
+      maxRows: REPORT_MAX_ROWS,
+    },
+  };
 }
 
 @Injectable()
@@ -29,6 +87,7 @@ export class ReportsService {
   // ---------------------------------------------------------------------
 
   private async missionRows(organizationId: string, query: QueryMissionReportDto) {
+    const paging = resolvePaging(query);
     const where: Prisma.MissionWhereInput = { organizationId };
     if (query.vehicleId) where.vehicleId = query.vehicleId;
     if (query.driverId) where.driverId = query.driverId;
@@ -49,10 +108,12 @@ export class ReportsService {
         steps: { include: { location: true }, orderBy: { order: 'asc' } },
       },
       orderBy: { plannedStart: 'desc' },
-      take: REPORT_MAX_ROWS,
+      skip: paging.offset,
+      take: paging.limit + 1,
     });
 
-    return missions.map((m) => ({
+    const paged = toPaged(missions, paging);
+    const rows = paged.rows.map((m) => ({
       id: m.id,
       status: m.status,
       driverName: `${m.driver.firstName} ${m.driver.lastName}`.trim(),
@@ -67,9 +128,10 @@ export class ReportsService {
       locations: m.steps.map((s) => s.location.name).join(' | '),
       createdAt: m.createdAt,
     }));
+    return { rows, meta: paged.meta };
   }
 
-  private missionColumns(): ReportColumn<Awaited<ReturnType<ReportsService['missionRows']>>[number]>[] {
+  private missionColumns(): ReportColumn<Awaited<ReturnType<ReportsService['missionRows']>>['rows'][number]>[] {
     return [
       { key: 'id', header: 'ID mission' },
       { key: 'status', header: 'Statut' },
@@ -86,8 +148,8 @@ export class ReportsService {
   }
 
   async missionsReport(organizationId: string, query: QueryMissionReportDto): Promise<ExportResult> {
-    const rows = await this.missionRows(organizationId, query);
-    return this.export(rows, this.missionColumns(), query.format, 'rapport-missions');
+    const { rows, meta } = await this.missionRows(organizationId, query);
+    return this.export(rows, meta, this.missionColumns(), query.format, 'rapport-missions');
   }
 
   // ---------------------------------------------------------------------
@@ -95,6 +157,7 @@ export class ReportsService {
   // ---------------------------------------------------------------------
 
   private async fuelRows(organizationId: string, query: QueryFuelReportDto) {
+    const paging = resolvePaging(query);
     const vehicles = await this.prisma.vehicle.findMany({ where: { organizationId }, select: { id: true } });
     const orgVehicleIds = vehicles.map((v) => v.id);
 
@@ -113,10 +176,12 @@ export class ReportsService {
       where,
       include: { vehicle: true, driver: true },
       orderBy: { createdAt: 'desc' },
-      take: REPORT_MAX_ROWS,
+      skip: paging.offset,
+      take: paging.limit + 1,
     });
 
-    return records.map((r) => ({
+    const paged = toPaged(records, paging);
+    const rows = paged.rows.map((r) => ({
       id: r.id,
       vehiclePlate: r.vehicle.plateNumber,
       vehicleId: r.vehicleId,
@@ -129,9 +194,10 @@ export class ReportsService {
       stationName: r.stationName,
       createdAt: r.createdAt,
     }));
+    return { rows, meta: paged.meta };
   }
 
-  private fuelColumns(): ReportColumn<Awaited<ReturnType<ReportsService['fuelRows']>>[number]>[] {
+  private fuelColumns(): ReportColumn<Awaited<ReturnType<ReportsService['fuelRows']>>['rows'][number]>[] {
     return [
       { key: 'id', header: 'ID déclaration' },
       { key: 'vehiclePlate', header: 'Véhicule' },
@@ -146,8 +212,8 @@ export class ReportsService {
   }
 
   async fuelReport(organizationId: string, query: QueryFuelReportDto): Promise<ExportResult> {
-    const rows = await this.fuelRows(organizationId, query);
-    return this.export(rows, this.fuelColumns(), query.format, 'rapport-carburant');
+    const { rows, meta } = await this.fuelRows(organizationId, query);
+    return this.export(rows, meta, this.fuelColumns(), query.format, 'rapport-carburant');
   }
 
   // ---------------------------------------------------------------------
@@ -155,6 +221,7 @@ export class ReportsService {
   // ---------------------------------------------------------------------
 
   private async gpsRows(organizationId: string, query: QueryGpsReportDto) {
+    const paging = resolvePaging(query);
     const vehicles = await this.prisma.vehicle.findMany({ where: { organizationId }, select: { id: true } });
     const orgVehicleIds = vehicles.map((v) => v.id);
 
@@ -173,10 +240,12 @@ export class ReportsService {
       where,
       include: { vehicle: true },
       orderBy: { recordedAt: 'desc' },
-      take: REPORT_MAX_ROWS,
+      skip: paging.offset,
+      take: paging.limit + 1,
     });
 
-    return positions.map((p) => ({
+    const paged = toPaged(positions, paging);
+    const rows = paged.rows.map((p) => ({
       id: p.id,
       vehiclePlate: p.vehicle.plateNumber,
       vehicleId: p.vehicleId,
@@ -188,9 +257,10 @@ export class ReportsService {
       isMocked: p.isMocked,
       recordedAt: p.recordedAt,
     }));
+    return { rows, meta: paged.meta };
   }
 
-  private gpsColumns(): ReportColumn<Awaited<ReturnType<ReportsService['gpsRows']>>[number]>[] {
+  private gpsColumns(): ReportColumn<Awaited<ReturnType<ReportsService['gpsRows']>>['rows'][number]>[] {
     return [
       { key: 'id', header: 'ID position' },
       { key: 'vehiclePlate', header: 'Véhicule' },
@@ -205,8 +275,8 @@ export class ReportsService {
   }
 
   async gpsPositionsReport(organizationId: string, query: QueryGpsReportDto): Promise<ExportResult> {
-    const rows = await this.gpsRows(organizationId, query);
-    return this.export(rows, this.gpsColumns(), query.format, 'rapport-positions-gps');
+    const { rows, meta } = await this.gpsRows(organizationId, query);
+    return this.export(rows, meta, this.gpsColumns(), query.format, 'rapport-positions-gps');
   }
 
   // ---------------------------------------------------------------------
@@ -215,6 +285,7 @@ export class ReportsService {
 
   private async export<T>(
     rows: T[],
+    meta: ReportMeta,
     columns: ReportColumn<T>[],
     format: string | undefined,
     baseFilename: string,
@@ -222,18 +293,24 @@ export class ReportsService {
     const fmt = format ?? 'json';
     switch (fmt) {
       case 'csv':
-        return { contentType: 'text/csv; charset=utf-8', filename: `${baseFilename}.csv`, body: toCsv(rows, columns) };
+        return { contentType: 'text/csv; charset=utf-8', filename: `${baseFilename}.csv`, body: toCsv(rows, columns), meta };
       case 'xlsx':
         return {
           contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           filename: `${baseFilename}.xlsx`,
           body: await toXlsx(rows, columns, baseFilename),
+          meta,
         };
       case 'pdf':
-        return { contentType: 'application/pdf', filename: `${baseFilename}.pdf`, body: await toPdf(rows, columns, baseFilename) };
+        return { contentType: 'application/pdf', filename: `${baseFilename}.pdf`, body: await toPdf(rows, columns, baseFilename), meta };
       case 'json':
       default:
-        return { contentType: 'application/json; charset=utf-8', filename: `${baseFilename}.json`, body: rows as unknown as Record<string, unknown>[] };
+        return {
+          contentType: 'application/json; charset=utf-8',
+          filename: `${baseFilename}.json`,
+          body: rows as unknown as Record<string, unknown>[],
+          meta,
+        };
     }
   }
 }

@@ -1,14 +1,19 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { UsersTable } from '@/features/users/users-table';
-import { fetchUsers } from '@/features/users/api';
+import { fetchUsers, inviteAdmin } from '@/features/users/api';
+import { Input } from '@/components/ui/input';
 import { canManageUsers } from '@/features/users/permissions';
 import { useCurrentUser } from '@/features/auth/current-user';
 
 export function UsersPageClient() {
+  const queryClient = useQueryClient();
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const { data: currentUser } = useCurrentUser();
   const { data, isLoading, isError } = useQuery({
     queryKey: ['users', 'list'],
@@ -16,6 +21,15 @@ export function UsersPageClient() {
   });
 
   const canManage = canManageUsers(currentUser?.role);
+  const invitation = useMutation({
+    mutationFn: inviteAdmin,
+    onSuccess: async () => {
+      setInviteMessage('Invitation créée. Communiquez à cette personne le lien /activate-invitation.');
+      setInviteEmail('');
+      await queryClient.invalidateQueries({ queryKey: ['users', 'list'] });
+    },
+    onError: () => setInviteMessage("Impossible de créer l’invitation."),
+  });
 
   return (
     <div className="flex flex-col gap-4 p-6">
@@ -23,11 +37,8 @@ export function UsersPageClient() {
 
       <Card>
         <CardContent className="pt-4 text-sm text-muted-foreground">
-          Cette liste est en lecture seule pour le moment : l&apos;API n&apos;expose aujourd&apos;hui que{' '}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">GET /users</code> et{' '}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">GET /users/:id</code>. La création
-          d&apos;administrateurs, le changement de rôle et la désactivation nécessitent une extension
-          backend (voir <code className="rounded bg-muted px-1 py-0.5 text-xs">apps/api/src/users</code>).
+          Les comptes administrateurs sont créés sur invitation du super-administrateur, puis activés
+          par leur propriétaire avec un code reçu par e-mail.
         </CardContent>
       </Card>
 
@@ -36,12 +47,25 @@ export function UsersPageClient() {
           <CardHeader>
             <CardTitle className="text-sm font-medium">Gestion des comptes (Super-administrateur)</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <span title="Nécessite une extension backend : aucun endpoint de création n'existe encore.">
-              <Button disabled variant="outline">
-                Inviter un utilisateur
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Input
+                className="max-w-sm"
+                type="email"
+                placeholder="nouvel.admin@exemple.com"
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+              />
+              <Button
+                variant="outline"
+                disabled={!inviteEmail || invitation.isPending}
+                onClick={() => { setInviteMessage(null); invitation.mutate(inviteEmail); }}
+              >
+                {invitation.isPending ? 'Invitation…' : 'Inviter un utilisateur'}
               </Button>
-            </span>
+            </div>
+            {inviteMessage && <p className="text-sm">{inviteMessage}</p>}
+            <div className="flex flex-wrap gap-2">
             <span title="Nécessite une extension backend : aucun endpoint de changement de rôle n'existe encore.">
               <Button disabled variant="outline">
                 Changer le rôle
@@ -52,6 +76,7 @@ export function UsersPageClient() {
                 Désactiver un compte
               </Button>
             </span>
+            </div>
           </CardContent>
         </Card>
       )}

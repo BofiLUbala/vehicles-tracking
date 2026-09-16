@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import maplibregl, { Map as MapLibreMap, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { RegionSelector } from '@/features/geo/region-selector';
+import { EMPTY_SELECTION, resolveTarget, type RegionSelection } from '@/features/geo/selection';
+import { presetFor, type MapViewMode } from '@/features/geo/view-mode';
+import { syncCamera } from '@/features/geo/map-camera';
+import { MAP_STYLE_URL } from '@/features/geo/map-style';
 
-const MAP_STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL ?? 'https://demotiles.maplibre.org/style.json';
-const DEFAULT_CENTER: [number, number] = [2.3522, 48.8566]; // Paris, à défaut de coordonnées connues
+const DEFAULT_CENTER: [number, number] = [23.66, -2.88]; // RDC, à défaut de coordonnées connues
 
 export interface LocationMapPickerProps {
   latitude: number | null;
@@ -20,8 +24,14 @@ export function LocationMapPicker({ latitude, longitude, onPick }: LocationMapPi
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
+  const [region, setRegion] = useState<RegionSelection>(EMPTY_SELECTION);
+  const [viewMode, setViewMode] = useState<MapViewMode>('auto');
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
+
+  const regionTarget = resolveTarget(region);
+  const preset = presetFor(viewMode, regionTarget?.level ?? 'world');
+  const regionKey = regionTarget ? `${regionTarget.center.join(',')}:${regionTarget.zoom}` : '';
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -31,8 +41,9 @@ export function LocationMapPicker({ latitude, longitude, onPick }: LocationMapPi
       container: containerRef.current,
       style: MAP_STYLE_URL,
       center,
-      zoom: latitude != null && longitude != null ? 13 : 5,
+      zoom: latitude != null && longitude != null ? 13 : 3.4,
     });
+    // Projection posée au chargement du style par `applyPreset` (voir l'effet plus bas).
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.on('click', (event) => {
       onPickRef.current(event.lngLat.lat, event.lngLat.lng);
@@ -46,6 +57,15 @@ export function LocationMapPicker({ latitude, longitude, onPick }: LocationMapPi
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- carte initialisée une seule fois
   }, []);
+
+  // Projection / relief / bâtiments 3D, puis recadrage sur la région choisie : l'admin descend
+  // continent → pays → province → ville avant de cliquer pour poser le point.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    syncCamera(map, preset, regionTarget);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset, regionKey]);
 
   // Synchronise le marqueur avec les valeurs latitude/longitude contrôlées par le formulaire.
   useEffect(() => {
@@ -72,10 +92,18 @@ export function LocationMapPicker({ latitude, longitude, onPick }: LocationMapPi
   }, [latitude, longitude]);
 
   return (
-    <div
-      ref={containerRef}
-      data-testid="location-map-picker"
-      className="h-64 w-full overflow-hidden rounded-md border border-border"
-    />
+    <div className="space-y-3">
+      <RegionSelector
+        selection={region}
+        onSelectionChange={setRegion}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
+      <div
+        ref={containerRef}
+        data-testid="location-map-picker"
+        className="h-64 w-full overflow-hidden rounded-md border border-border"
+      />
+    </div>
   );
 }

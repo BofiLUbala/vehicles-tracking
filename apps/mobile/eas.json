@@ -1,0 +1,45 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://10.0.2.2:3001/api/v1",
+        "EXPO_PUBLIC_WS_URL": "http://10.0.2.2:3001"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-staging.tracking-vehicles.local/api/v1",
+        "EXPO_PUBLIC_WS_URL": "https://api-staging.tracking-vehicles.local"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.tracking-vehicles.local/api/v1",
+        "EXPO_PUBLIC_WS_URL": "https://api.tracking-vehicles.local"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
