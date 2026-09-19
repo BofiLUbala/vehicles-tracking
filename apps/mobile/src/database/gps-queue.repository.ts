@@ -125,6 +125,16 @@ export const GpsQueueRepository = {
     return row?.count || 0;
   },
 
+  getMissionPositions(missionId: string): { latitude: number; longitude: number; recorded_at: string }[] {
+    const db = getDatabase();
+    return db.getAllSync<{ latitude: number; longitude: number; recorded_at: string }>(
+      `SELECT latitude, longitude, recorded_at FROM pending_gps_positions 
+       WHERE mission_id = ? 
+       ORDER BY recorded_at ASC`,
+      [missionId]
+    );
+  },
+
   toPayload(row: PendingGpsPositionRow): GpsPositionPayload {
     return {
       clientEventId: row.client_event_id,

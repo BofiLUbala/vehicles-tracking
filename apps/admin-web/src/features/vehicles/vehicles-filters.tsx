@@ -1,5 +1,6 @@
 'use client';
 
+import { FilterBar, FilterField } from '@/components/filter-bar';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { VEHICLE_STATUSES } from '@/features/vehicles/schemas';
@@ -12,27 +13,24 @@ export interface VehiclesFiltersProps {
 }
 
 /** `GET /vehicles` ne prend aucun paramètre de requête (voir `vehicles.controller.ts`) : le
- * filtrage se fait donc côté client sur la liste complète renvoyée par l'API. */
+ *  filtrage se fait donc côté client sur la liste complète renvoyée par l'API. */
 export function VehiclesFiltersBar({ filters, onChange }: VehiclesFiltersProps) {
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="vehicle-search" className="text-xs text-muted-foreground">
-          Recherche
-        </label>
+    <FilterBar>
+      <FilterField label="Recherche">
         <Input
           id="vehicle-search"
+          aria-label="Recherche"
           value={filters.search ?? ''}
           onChange={(e) => onChange({ ...filters, search: e.target.value || undefined })}
           placeholder="Immatriculation, marque, modèle"
+          className="min-w-[16rem]"
         />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="vehicle-status" className="text-xs text-muted-foreground">
-          Statut
-        </label>
+      </FilterField>
+      <FilterField label="Statut">
         <Select
           id="vehicle-status"
+          aria-label="Statut"
           value={filters.status ?? ''}
           onChange={(e) => onChange({ ...filters, status: (e.target.value || undefined) as VehicleFilters['status'] })}
         >
@@ -43,7 +41,7 @@ export function VehiclesFiltersBar({ filters, onChange }: VehiclesFiltersProps) 
             </option>
           ))}
         </Select>
-      </div>
-    </div>
+      </FilterField>
+    </FilterBar>
   );
 }

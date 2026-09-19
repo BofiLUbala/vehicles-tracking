@@ -152,9 +152,7 @@ export class ZonesService {
       hasAllowedZones,
       outsideAllowed,
       forbiddenZone: forbiddenHit ? { id: forbiddenHit.id, name: forbiddenHit.name } : null,
-      get violated() {
-        return this.outsideAllowed || this.forbiddenZone !== null;
-      },
+      violated: outsideAllowed || forbiddenHit !== null,
     };
   }
 

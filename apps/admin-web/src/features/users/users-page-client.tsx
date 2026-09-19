@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ErrorState, LoadingSkeleton } from '@/components/empty-state';
 import { UsersTable } from '@/features/users/users-table';
 import { fetchUsers, inviteAdmin } from '@/features/users/api';
 import { Input } from '@/components/ui/input';
@@ -32,11 +33,16 @@ export function UsersPageClient() {
   });
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">Utilisateurs</h1>
+    <div className="flex flex-col gap-5 p-6 lg:p-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-bold tracking-tight">Utilisateurs</h1>
+        <p className="text-sm text-muted-foreground">
+          Gérez les comptes administrateurs et les rôles de votre organisation.
+        </p>
+      </div>
 
       <Card>
-        <CardContent className="pt-4 text-sm text-muted-foreground">
+        <CardContent className="px-5 pb-5 pt-3 text-sm text-muted-foreground">
           Les comptes administrateurs sont créés sur invitation du super-administrateur, puis activés
           par leur propriétaire avec un code reçu par e-mail.
         </CardContent>
@@ -45,7 +51,7 @@ export function UsersPageClient() {
       {canManage && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Gestion des comptes (Super-administrateur)</CardTitle>
+            <CardTitle className="text-base font-semibold">Gestion des comptes (Super-administrateur)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-2">
@@ -83,8 +89,8 @@ export function UsersPageClient() {
 
       <Card>
         <CardContent className="p-0">
-          {isLoading && <p className="p-4 text-sm text-muted-foreground">Chargement des utilisateurs…</p>}
-          {isError && <p className="p-4 text-sm text-destructive">Impossible de charger les utilisateurs.</p>}
+          {isLoading && <LoadingSkeleton className="h-64" />}
+          {isError && <ErrorState message="Impossible de charger les utilisateurs." />}
           {data && <UsersTable users={data} />}
         </CardContent>
       </Card>

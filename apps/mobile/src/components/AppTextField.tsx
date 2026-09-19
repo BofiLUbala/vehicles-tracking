@@ -7,7 +7,7 @@ import {
   TextInputProps,
   ViewStyle,
 } from 'react-native';
-import { AppTheme } from '../theme/colors';
+import { AppRadius, AppTheme } from '../theme/colors';
 
 interface AppTextFieldProps extends TextInputProps {
   label?: string;
@@ -35,7 +35,7 @@ export const AppTextField: React.FC<AppTextFieldProps> = ({
       >
         {prefix && <Text style={styles.prefix}>{prefix}</Text>}
         <TextInput
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={AppTheme.textMuted}
           style={[styles.input, style]}
           {...props}
         />
@@ -58,16 +58,16 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: AppTheme.surface,
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
+    borderColor: AppTheme.border,
+    borderRadius: AppRadius.md,
     paddingHorizontal: 14,
     height: 52,
   },
   inputError: {
     borderColor: AppTheme.danger,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: `${AppTheme.danger}12`,
   },
   prefix: {
     fontSize: 16,

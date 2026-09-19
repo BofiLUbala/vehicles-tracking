@@ -1,5 +1,6 @@
 'use client';
 
+import { FilterBar, FilterField } from '@/components/filter-bar';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DRIVER_STATUSES } from '@/features/drivers/schemas';
@@ -15,24 +16,20 @@ export interface DriversFiltersProps {
  * se fait donc côté client sur la liste complète renvoyée par l'API. */
 export function DriversFiltersBar({ filters, onChange }: DriversFiltersProps) {
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="driver-search" className="text-xs text-muted-foreground">
-          Recherche
-        </label>
+    <FilterBar>
+      <FilterField label="Recherche">
         <Input
           id="driver-search"
+          aria-label="Recherche"
           value={filters.search ?? ''}
           onChange={(e) => onChange({ ...filters, search: e.target.value || undefined })}
           placeholder="Nom ou téléphone"
         />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="driver-status" className="text-xs text-muted-foreground">
-          Statut
-        </label>
+      </FilterField>
+      <FilterField label="Statut">
         <Select
           id="driver-status"
+          aria-label="Statut"
           value={filters.status ?? ''}
           onChange={(e) => onChange({ ...filters, status: (e.target.value || undefined) as DriverFilters['status'] })}
         >
@@ -43,7 +40,7 @@ export function DriversFiltersBar({ filters, onChange }: DriversFiltersProps) {
             </option>
           ))}
         </Select>
-      </div>
-    </div>
+      </FilterField>
+    </FilterBar>
   );
 }

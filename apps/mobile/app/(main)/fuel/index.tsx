@@ -10,11 +10,12 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { ArrowLeft, Camera, Droplets, Ellipsis, Fuel, Zap } from 'lucide-react-native';
 import { useAuth } from '../../../src/context/AuthContext';
 import { AppTextField } from '../../../src/components/AppTextField';
 import { BigButton } from '../../../src/components/BigButton';
 import { FuelType } from '../../../src/types/fuel.types';
-import { AppTheme } from '../../../src/theme/colors';
+import { AppRadius, AppShadow, AppSpacing, AppTheme } from '../../../src/theme/colors';
 
 const FUEL_TYPES: { label: string; value: FuelType }[] = [
   { label: 'Diesel / Gasoil', value: 'DIESEL' },
@@ -22,6 +23,13 @@ const FUEL_TYPES: { label: string; value: FuelType }[] = [
   { label: 'Électrique', value: 'ELECTRIC' },
   { label: 'Autre', value: 'OTHER' },
 ];
+
+const FUEL_TYPE_ICONS: Record<FuelType, React.ComponentType<{ size?: number; color?: string }>> = {
+  DIESEL: Fuel,
+  PETROL: Droplets,
+  ELECTRIC: Zap,
+  OTHER: Ellipsis,
+};
 
 export default function FuelFormScreen() {
   const { driver } = useAuth();
@@ -48,8 +56,9 @@ export default function FuelFormScreen() {
     if (!validate()) return;
 
     router.push({
-      pathname: `/(main)/fuel/${vehicleId}/receipt-photo`,
+      pathname: '/(main)/fuel/[vehicleId]/receipt-photo',
       params: {
+        vehicleId,
         liters,
         totalCost,
         odometer,
@@ -67,10 +76,10 @@ export default function FuelFormScreen() {
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Retour</Text>
+            <ArrowLeft size={20} color={AppTheme.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Déclaration Carburant</Text>
-          <View style={{ width: 60 }} />
+          <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -78,74 +87,82 @@ export default function FuelFormScreen() {
             Renseignez les détails du plein effectué avant de photographier le reçu et le compteur.
           </Text>
 
-          <AppTextField
-            label="Identifiant / Plaque du véhicule"
-            placeholder="Ex: AA-123-BB"
-            value={vehicleId}
-            onChangeText={setVehicleId}
-            error={errors.vehicleId}
-          />
+          <View style={styles.formCard}>
+            <AppTextField
+              label="Identifiant / Plaque du véhicule"
+              placeholder="Ex: AA-123-BB"
+              value={vehicleId}
+              onChangeText={setVehicleId}
+              error={errors.vehicleId}
+            />
 
-          <View style={styles.row}>
-            <View style={styles.halfCol}>
-              <AppTextField
-                label="Volume (Litres)"
-                placeholder="Ex: 85.5"
-                keyboardType="numeric"
-                value={liters}
-                onChangeText={setLiters}
-                error={errors.liters}
-              />
+            <View style={styles.row}>
+              <View style={styles.halfCol}>
+                <AppTextField
+                  label="Volume (Litres)"
+                  placeholder="Ex: 85.5"
+                  keyboardType="numeric"
+                  value={liters}
+                  onChangeText={setLiters}
+                  error={errors.liters}
+                  style={styles.numericInput}
+                />
+              </View>
+              <View style={styles.halfCol}>
+                <AppTextField
+                  label="Coût Total"
+                  placeholder="Ex: 250000"
+                  keyboardType="numeric"
+                  value={totalCost}
+                  onChangeText={setTotalCost}
+                  error={errors.totalCost}
+                  style={styles.numericInput}
+                />
+              </View>
             </View>
-            <View style={styles.halfCol}>
-              <AppTextField
-                label="Coût Total"
-                placeholder="Ex: 250000"
-                keyboardType="numeric"
-                value={totalCost}
-                onChangeText={setTotalCost}
-                error={errors.totalCost}
-              />
+
+            <AppTextField
+              label="Kilométrage au compteur (km)"
+              placeholder="Ex: 142350"
+              keyboardType="numeric"
+              value={odometer}
+              onChangeText={setOdometer}
+              error={errors.odometer}
+              style={styles.numericInput}
+            />
+
+            <Text style={styles.inputLabel}>Type de carburant</Text>
+            <View style={styles.fuelTypeGrid}>
+              {FUEL_TYPES.map((ft) => {
+                const isSelected = fuelType === ft.value;
+                const Icon = FUEL_TYPE_ICONS[ft.value];
+                return (
+                  <TouchableOpacity
+                    key={ft.value}
+                    activeOpacity={0.8}
+                    onPress={() => setFuelType(ft.value)}
+                    style={[styles.fuelTypeBtn, isSelected ? styles.fuelTypeBtnActive : null]}
+                  >
+                    <Icon size={16} color={isSelected ? AppTheme.primaryDark : AppTheme.textMuted} />
+                    <Text style={[styles.fuelTypeText, isSelected ? styles.fuelTypeTextActive : null]}>
+                      {ft.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
+
+            <AppTextField
+              label="Nom de la station (Optionnel)"
+              placeholder="Ex: TotalEnergies Limete"
+              value={stationName}
+              onChangeText={setStationName}
+            />
           </View>
-
-          <AppTextField
-            label="Kilométrage au compteur (km)"
-            placeholder="Ex: 142350"
-            keyboardType="numeric"
-            value={odometer}
-            onChangeText={setOdometer}
-            error={errors.odometer}
-          />
-
-          <Text style={styles.inputLabel}>Type de carburant</Text>
-          <View style={styles.fuelTypeGrid}>
-            {FUEL_TYPES.map((ft) => {
-              const isSelected = fuelType === ft.value;
-              return (
-                <TouchableOpacity
-                  key={ft.value}
-                  activeOpacity={0.8}
-                  onPress={() => setFuelType(ft.value)}
-                  style={[styles.fuelTypeBtn, isSelected ? styles.fuelTypeBtnActive : null]}
-                >
-                  <Text style={[styles.fuelTypeText, isSelected ? styles.fuelTypeTextActive : null]}>
-                    {ft.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <AppTextField
-            label="Nom de la station (Optionnel)"
-            placeholder="Ex: TotalEnergies Limete"
-            value={stationName}
-            onChangeText={setStationName}
-          />
 
           <BigButton
-            label="Photographier le reçu →"
+            label="Photographier le reçu"
+            icon={<Camera size={20} color="#FFFFFF" />}
             onPressed={handleNext}
             style={styles.nextBtn}
           />
@@ -158,7 +175,7 @@ export default function FuelFormScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
   container: {
     flex: 1,
@@ -167,62 +184,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: AppSpacing.xl,
+    paddingVertical: AppSpacing.md,
+    backgroundColor: AppTheme.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: AppTheme.border,
   },
   backBtn: {
-    paddingVertical: 4,
-    paddingRight: 8,
+    width: 36,
+    height: 36,
+    borderRadius: AppRadius.pill,
+    backgroundColor: AppTheme.subtle,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  backText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: AppTheme.primary,
+  headerSpacer: {
+    width: 36,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '800',
     color: AppTheme.text,
   },
   content: {
-    padding: 20,
+    padding: AppSpacing.xl,
     paddingBottom: 40,
   },
   subtitle: {
     fontSize: 14,
     color: AppTheme.textSecondary,
     lineHeight: 20,
-    marginBottom: 20,
+    marginBottom: AppSpacing.xl,
+  },
+  formCard: {
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: AppSpacing.xl,
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    marginBottom: AppSpacing.xxl,
+    ...AppShadow.card,
   },
   row: {
     flexDirection: 'row',
-    gap: 12,
+    gap: AppSpacing.md,
   },
   halfCol: {
     flex: 1,
+  },
+  numericInput: {
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: AppTheme.text,
-    marginBottom: 8,
+    marginBottom: AppSpacing.sm,
   },
   fuelTypeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
+    gap: AppSpacing.sm,
+    marginBottom: AppSpacing.lg,
   },
   fuelTypeBtn: {
-    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: AppTheme.card,
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    paddingHorizontal: 14,
+    borderColor: AppTheme.border,
+    paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: AppRadius.md,
   },
   fuelTypeBtnActive: {
     backgroundColor: AppTheme.primaryLight,
@@ -237,6 +272,6 @@ const styles = StyleSheet.create({
     color: AppTheme.primaryDark,
   },
   nextBtn: {
-    marginTop: 16,
+    marginTop: AppSpacing.lg,
   },
 });

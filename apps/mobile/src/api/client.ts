@@ -45,7 +45,13 @@ const processQueue = (error: any, token: string | null = null) => {
 
 function isAuthEndpoint(url?: string): boolean {
   if (!url) return false;
-  return url.includes('/auth/otp/') || url.includes('/auth/refresh') || url.includes('/auth/logout');
+  return (
+    url.includes('/auth/otp/') ||
+    url.includes('/auth/driver/login') ||
+    url.includes('/auth/password-reset/') ||
+    url.includes('/auth/refresh') ||
+    url.includes('/auth/logout')
+  );
 }
 
 apiClient.interceptors.request.use(

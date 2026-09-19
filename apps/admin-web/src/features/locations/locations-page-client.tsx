@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorState, LoadingSkeleton } from '@/components/empty-state';
 import { LocationForm } from '@/features/locations/location-form';
 import { LocationsTable } from '@/features/locations/locations-table';
 import { QrCodeDialog } from '@/features/locations/qr-code-dialog';
@@ -79,9 +80,14 @@ export function LocationsPageClient() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Points géographiques</h1>
+    <div className="flex flex-col gap-5 p-6 lg:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight">Points géographiques</h1>
+          <p className="text-sm text-muted-foreground">
+            Gérez les lieux de collecte, dépôt, transfert et ravitaillement de votre flotte.
+          </p>
+        </div>
         {panel.mode === 'closed' && (
           <Button type="button" onClick={() => setPanel({ mode: 'create' })}>
             Nouveau point
@@ -92,7 +98,7 @@ export function LocationsPageClient() {
       {panel.mode !== 'closed' && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-base font-semibold">
               {panel.mode === 'edit' ? `Modifier « ${panel.location.name} »` : 'Nouveau point'}
             </CardTitle>
           </CardHeader>
@@ -109,8 +115,8 @@ export function LocationsPageClient() {
 
       <Card>
         <CardContent className="p-0">
-          {isLoading && <p className="p-4 text-sm text-muted-foreground">Chargement des points…</p>}
-          {isError && <p className="p-4 text-sm text-destructive">Impossible de charger les points géographiques.</p>}
+          {isLoading && <LoadingSkeleton className="h-64" />}
+          {isError && <ErrorState message="Impossible de charger les points géographiques." />}
           {data && (
             <LocationsTable
               locations={data}

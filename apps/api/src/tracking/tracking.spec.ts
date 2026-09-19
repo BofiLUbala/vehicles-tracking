@@ -10,6 +10,8 @@ import { DriversModule } from '../drivers/drivers.module';
 import { DriversService } from '../drivers/drivers.service';
 import { VehiclesModule } from '../vehicles/vehicles.module';
 import { VehiclesService } from '../vehicles/vehicles.service';
+import { MissionsModule } from '../missions/missions.module';
+import { MissionsService } from '../missions/missions.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -25,24 +27,38 @@ describe('TrackingService (intégration DB réelle)', () => {
   let tracking: TrackingService;
   let drivers: DriversService;
   let vehicles: VehiclesService;
+  let missions: MissionsService;
   let prisma: PrismaService;
 
   const driverIds: string[] = [];
   const vehicleIds: string[] = [];
+  const missionIds: string[] = [];
+  const locationIds: string[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, DriversModule, VehiclesModule, TrackingModule],
+      imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, DriversModule, VehiclesModule, MissionsModule, TrackingModule],
     }).compile();
     await moduleRef.init();
 
     tracking = moduleRef.get(TrackingService);
     drivers = moduleRef.get(DriversService);
     vehicles = moduleRef.get(VehiclesService);
+    missions = moduleRef.get(MissionsService);
     prisma = moduleRef.get(PrismaService);
   }, 30_000);
 
   afterAll(async () => {
+    for (const id of missionIds) {
+      await prisma.alert.deleteMany({ where: { missionId: id } }).catch(() => undefined);
+      await prisma.missionStepValidation.deleteMany({ where: { missionStep: { missionId: id } } }).catch(() => undefined);
+      await prisma.missionEvent.deleteMany({ where: { missionId: id } }).catch(() => undefined);
+      await prisma.missionStep.deleteMany({ where: { missionId: id } }).catch(() => undefined);
+      await prisma.mission.delete({ where: { id } }).catch(() => undefined);
+    }
+    for (const id of locationIds) {
+      await prisma.location.delete({ where: { id } }).catch(() => undefined);
+    }
     await prisma.alert.deleteMany({ where: { vehicleId: { in: vehicleIds } } }).catch(() => undefined);
     await prisma.gpsPosition.deleteMany({ where: { vehicleId: { in: vehicleIds } } }).catch(() => undefined);
     await prisma.vehicleLatestPosition.deleteMany({ where: { vehicleId: { in: vehicleIds } } }).catch(() => undefined);
@@ -63,6 +79,31 @@ describe('TrackingService (intégration DB réelle)', () => {
 
     await drivers.assignVehicle(DEMO_ORG_ID, driver.id, vehicle.id);
     return { driver, vehicle };
+  }
+
+  async function setupStartedMission() {
+    const { driver, vehicle } = await setupDriverAndVehicle();
+    const location = await prisma.location.create({
+      data: {
+        organizationId: DEMO_ORG_ID,
+        name: 'Décharge',
+        type: 'LANDFILL',
+        latitude: BASE_LAT,
+        longitude: BASE_LNG,
+      },
+    });
+    locationIds.push(location.id);
+
+    const mission = await missions.create(DEMO_ORG_ID, {
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+      steps: [{ locationId: location.id, order: 1, actionType: 'DROPOFF' as any }],
+    } as any);
+    missionIds.push(mission.id);
+
+    await missions.assign(DEMO_ORG_ID, mission.id, { driverId: driver.id, vehicleId: vehicle.id });
+    const started = await missions.start(driver.id, mission.id);
+    return { driver, vehicle, mission: started };
   }
 
   function positionPayload(overrides: Partial<Parameters<TrackingService['ingestSingle']>[2]> = {}) {
@@ -223,6 +264,106 @@ describe('TrackingService (intégration DB réelle)', () => {
     expect(trace.geometry.coordinates[0][1]).toBeCloseTo(BASE_LAT, 5);
     expect(trace.geometry.coordinates[1][0]).toBeCloseTo(BASE_LNG + 0.001, 5);
     expect(trace.geometry.coordinates[1][1]).toBeCloseTo(BASE_LAT + 0.001, 5);
+  });
+
+  it('accepte une position GPS associée à une mission active (STARTED) avec missionId', async () => {
+    const { driver, vehicle, mission } = await setupStartedMission();
+
+    const dto = positionPayload({ vehicleId: vehicle.id, missionId: mission.id });
+    const stored = await tracking.ingestSingle(driver.id, DEMO_ORG_ID, dto);
+
+    expect(stored.missionId).toBe(mission.id);
+    const row = await prisma.gpsPosition.findUnique({ where: { clientEventId: dto.clientEventId } });
+    expect(row!.missionId).toBe(mission.id);
+  });
+
+  it('rejette une position GPS avec missionId quand la mission n\'est pas active (ex: ASSIGNED)', async () => {
+    const { driver, vehicle } = await setupDriverAndVehicle();
+    const location = await prisma.location.create({
+      data: {
+        organizationId: DEMO_ORG_ID,
+        name: 'Décharge',
+        type: 'LANDFILL',
+        latitude: BASE_LAT,
+        longitude: BASE_LNG,
+      },
+    });
+    locationIds.push(location.id);
+
+    const mission = await missions.create(DEMO_ORG_ID, {
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+      steps: [{ locationId: location.id, order: 1, actionType: 'DROPOFF' as any }],
+    } as any);
+    missionIds.push(mission.id);
+    await missions.assign(DEMO_ORG_ID, mission.id, { driverId: driver.id, vehicleId: vehicle.id });
+    // statut = ASSIGNED, pas encore STARTED/IN_PROGRESS
+
+    const dto = positionPayload({ vehicleId: vehicle.id, missionId: mission.id });
+    await expect(tracking.ingestSingle(driver.id, DEMO_ORG_ID, dto)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('rejette une position GPS avec missionId d\'une mission d\'un autre véhicule', async () => {
+    const { driver, vehicle } = await setupStartedMission();
+    const { vehicle: otherVehicle } = await setupDriverAndVehicle();
+    const otherDriver = await prisma.driver.findFirst({ where: { id: driverIds[driverIds.length - 1] } });
+
+    const dto = positionPayload({ vehicleId: otherVehicle.id, missionId: '00000000-0000-0000-0000-000000000000' });
+    await expect(tracking.ingestSingle(driver.id, DEMO_ORG_ID, dto)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('GET missions/:id/trace renvoie métadonnées + positions + GeoJSON (ordre chronologique)', async () => {
+    const { driver, vehicle, mission } = await setupStartedMission();
+
+    const p1 = positionPayload({
+      vehicleId: vehicle.id,
+      missionId: mission.id,
+      latitude: BASE_LAT,
+      longitude: BASE_LNG,
+      recordedAt: new Date(Date.now() - 30_000).toISOString(),
+    });
+    const p2 = positionPayload({
+      vehicleId: vehicle.id,
+      missionId: mission.id,
+      latitude: BASE_LAT + 0.001,
+      longitude: BASE_LNG + 0.001,
+      recordedAt: new Date(Date.now() - 15_000).toISOString(),
+    });
+    await tracking.ingestSingle(driver.id, DEMO_ORG_ID, p1);
+    await tracking.ingestSingle(driver.id, DEMO_ORG_ID, p2);
+
+    const trace = await tracking.missionTrace(DEMO_ORG_ID, mission.id);
+    expect(trace.missionId).toBe(mission.id);
+    expect(trace.vehicleId).toBe(vehicle.id);
+    expect(trace.driverId).toBe(driver.id);
+    expect(trace.status).toBe('STARTED');
+    expect(trace.startedAt).not.toBeNull();
+    expect(trace.lastPositionAt).not.toBeNull();
+    expect(trace.totalPoints).toBe(2);
+    expect(trace.totalDistanceMeters).toBeGreaterThan(0);
+    expect(trace.positions).toHaveLength(2);
+    expect(trace.positions[0].latitude).toBeCloseTo(BASE_LAT, 5);
+    expect(trace.positions[0].recordedAt < trace.positions[1].recordedAt).toBe(true);
+    expect(trace.geojson.type).toBe('Feature');
+    expect(trace.geojson.geometry.coordinates[0]).toEqual([BASE_LNG, BASE_LAT]);
+  });
+
+  it("isole les traces par organisation (404 si la mission n'appartient pas à l'org)", async () => {
+    const { driver, vehicle, mission } = await setupStartedMission();
+    const otherOrgId = '00000000-0000-0000-0000-000000000099';
+
+    await expect(tracking.missionTrace(otherOrgId, mission.id)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('GET vehicles/live inclut activeMissionId quand le véhicule porte une mission active', async () => {
+    const { driver, vehicle, mission } = await setupStartedMission();
+
+    await tracking.ingestSingle(driver.id, DEMO_ORG_ID, positionPayload({ vehicleId: vehicle.id, missionId: mission.id }));
+
+    const live = await tracking.liveVehicles(DEMO_ORG_ID);
+    const entry = live.find((v) => v.vehicleId === vehicle.id);
+    expect(entry?.activeMissionId).toBe(mission.id);
+    expect(entry?.status).toBe('ON_MISSION');
   });
 });
 

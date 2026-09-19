@@ -1,41 +1,51 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl, { Map as MapLibreMap, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { statusToColor } from '@/features/tracking/status';
-import { fetchVehicleTrace } from '@/features/tracking/api';
+import { statusToColor, statusToLabel } from '@/features/tracking/status';
 import { TrackingLegend } from '@/features/tracking/legend';
-import { TracePanel } from '@/features/tracking/trace-panel';
-import type { LiveVehicle } from '@/features/tracking/types';
+import { VehiclePanel } from '@/features/tracking/vehicle-panel';
+import { ConnectionStatus } from '@/components/connection-status';
+import { EmptyState } from '@/components/empty-state';
+import type { LiveVehicle, MissionTraceResponse } from '@/features/tracking/types';
 import { RegionSelector } from '@/features/geo/region-selector';
 import { EMPTY_SELECTION, resolveTarget, selectionPath, type RegionSelection } from '@/features/geo/selection';
 import { presetFor, type MapViewMode } from '@/features/geo/view-mode';
 import { isStyleUsable, syncCamera } from '@/features/geo/map-camera';
 import { MAP_STYLE_URL } from '@/features/geo/map-style';
+import { cn } from '@/lib/utils';
 
-const TRACE_SOURCE_ID = 'vehicle-trace';
-const TRACE_LAYER_ID = 'vehicle-trace-line';
-// Vue d'ouverture : la RDC entière, à défaut de véhicules positionnés.
+const TRACE_SOURCE_ID = 'mission-trace';
+const TRACE_LAYER_ID = 'mission-trace-line';
+const STEP_SOURCE_ID = 'mission-steps';
+const STEP_LAYER_ID = 'mission-steps-layer';
 const DEFAULT_CENTER: [number, number] = [23.66, -2.88];
+const TRACE_COLOR = '#1479FF';
 
 interface TrackingMapProps {
   vehicles: LiveVehicle[];
   connected: boolean;
+  socket: import('socket.io-client').Socket | null;
+  onConnectionState?: (state: 'live' | 'connecting' | 'offline') => void;
 }
 
-export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
+/** Centre de contrôle temps réel : marqueurs de flotte + tracé mission + panneau véhicule sélectionné. */
+export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Map<string, Marker>>(new Map());
+  const tracePointsRef = useRef<{ latitude: number; longitude: number }[]>([]);
+  const mapReadyRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [traceVisible, setTraceVisible] = useState(false);
+  const [missionTrace, setMissionTrace] = useState<MissionTraceResponse | null>(null);
   const [region, setRegion] = useState<RegionSelection>(EMPTY_SELECTION);
   const [viewMode, setViewMode] = useState<MapViewMode>('auto');
   const [regionPanelOpen, setRegionPanelOpen] = useState(true);
   const fittedOnceRef = useRef(false);
+  const previousMissionIdRef = useRef<string | null>(null);
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) ?? null;
   const regionTarget = resolveTarget(region);
@@ -43,13 +53,84 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
   const regionPath = selectionPath(region);
   const regionKey = regionTarget ? `${regionTarget.center.join(',')}:${regionTarget.zoom}` : '';
 
-  const traceQuery = useQuery({
-    queryKey: ['tracking', 'vehicles', selectedVehicleId, 'trace'],
-    queryFn: () => fetchVehicleTrace(selectedVehicleId as string),
-    enabled: traceVisible && !!selectedVehicleId,
-  });
+  const drawTrace = useCallback((points: { latitude: number; longitude: number }[]) => {
+    const map = mapRef.current;
+    if (!map || !mapReadyRef.current) return;
 
-  // Init carte une seule fois.
+    if (map.getLayer(TRACE_LAYER_ID)) map.removeLayer(TRACE_LAYER_ID);
+    if (map.getSource(TRACE_SOURCE_ID)) map.removeSource(TRACE_SOURCE_ID);
+
+    if (points.length < 2) return;
+
+    const geojson: GeoJSON.Feature = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: points.map((p) => [p.longitude, p.latitude]),
+      },
+      properties: {},
+    };
+
+    map.addSource(TRACE_SOURCE_ID, { type: 'geojson', data: geojson });
+    map.addLayer({
+      id: TRACE_LAYER_ID,
+      type: 'line',
+      source: TRACE_SOURCE_ID,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': TRACE_COLOR, 'line-width': 4, 'line-opacity': 0.9 },
+    });
+  }, []);
+
+  const drawStepMarkers = useCallback((trace: MissionTraceResponse | null, steps: { order: number; lat: number; lng: number }[] = []) => {
+    const map = mapRef.current;
+    if (!map || !mapReadyRef.current) return;
+    if (map.getLayer(STEP_LAYER_ID)) map.removeLayer(STEP_LAYER_ID);
+    if (map.getSource(STEP_SOURCE_ID)) map.removeSource(STEP_SOURCE_ID);
+    if (steps.length === 0) return;
+    map.addSource(STEP_SOURCE_ID, {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: steps.map((s) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+          properties: { order: s.order },
+        })),
+      },
+    });
+    map.addLayer({
+      id: STEP_LAYER_ID,
+      type: 'circle',
+      source: STEP_SOURCE_ID,
+      paint: {
+        'circle-radius': 12,
+        'circle-color': '#FFFFFF',
+        'circle-stroke-width': 4,
+        'circle-stroke-color': '#F59E0B',
+      },
+    });
+  }, []);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void drawStepMarkers;
+
+  const handleMissionTraceLoaded = useCallback(
+    (trace: MissionTraceResponse) => {
+      setMissionTrace(trace);
+      tracePointsRef.current = trace.positions;
+      if (traceVisible) drawTrace(tracePointsRef.current);
+    },
+    [traceVisible, drawTrace],
+  );
+
+  const handleLivePoint = useCallback(
+    (point: { latitude: number; longitude: number }) => {
+      tracePointsRef.current = [...tracePointsRef.current, point];
+      if (traceVisible) drawTrace(tracePointsRef.current);
+    },
+    [traceVisible, drawTrace],
+  );
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
@@ -58,16 +139,12 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
       center: DEFAULT_CENTER,
       zoom: 3.4,
     });
-    // La projection ne fait pas partie des options du constructeur : elle est posée au chargement du
-    // style par `applyPreset` (globe par défaut, plan dès qu'une province/ville est sélectionnée).
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    // Ni `load` ni `isStyleLoaded()` ne conviennent comme signal de disponibilité : tous deux
-    // attendent un rendu complet (sprite, glyphes, tuiles) qui peut ne jamais aboutir avec un fond
-    // de carte public, ce qui figerait la carte sur sa vue initiale. On écoute `styledata` (et non
-    // `once`) jusqu'à ce que le style soit exploitable : les couches ajoutées ensuite (trace GPS)
-    // exigent un style appliqué.
     const markReady = () => {
-      if (isStyleUsable(map)) setMapReady(true);
+      if (isStyleUsable(map)) {
+        mapReadyRef.current = true;
+        setMapReady(true);
+      }
     };
     map.on('styledata', markReady);
     mapRef.current = map;
@@ -79,21 +156,13 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
     };
   }, []);
 
-  // Projection / relief / bâtiments 3D + recadrage sur la région choisie. `syncCamera` est
-  // idempotent : il ne rejoue le vol de caméra que si le lieu sélectionné a changé.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (regionTarget) {
-      // Une sélection explicite prime sur le cadrage automatique sur les véhicules.
-      fittedOnceRef.current = true;
-    }
+    if (regionTarget) fittedOnceRef.current = true;
     syncCamera(map, preset, regionTarget);
-    // `regionTarget` est recalculé à chaque rendu : on dépend de sa clé stable (lieu + zoom).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, preset, regionKey]);
 
-  // Synchronise les marqueurs avec la liste de véhicules (ajout/maj/suppression incrémentale).
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -101,7 +170,7 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
     const seen = new Set<string>();
 
     for (const vehicle of vehicles) {
-      if (!vehicle.position) continue; // pas encore de position rapportée : pas de marqueur
+      if (!vehicle.position) continue;
       seen.add(vehicle.id);
       let marker = markersRef.current.get(vehicle.id);
 
@@ -109,15 +178,8 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
         const el = document.createElement('button');
         el.type = 'button';
         el.setAttribute('aria-label', `Véhicule ${vehicle.plate}`);
-        el.style.width = '16px';
-        el.style.height = '16px';
-        el.style.borderRadius = '50%';
-        el.style.border = '2px solid white';
-        el.style.boxShadow = '0 0 0 1px rgba(0,0,0,0.2)';
         el.style.cursor = 'pointer';
-        el.addEventListener('click', () => setSelectedVehicleId(vehicle.id));
-
-        marker = new maplibregl.Marker({ element: el })
+        marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([vehicle.position.lng, vehicle.position.lat])
           .addTo(map);
         markersRef.current.set(vehicle.id, marker);
@@ -125,7 +187,33 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
         marker.setLngLat([vehicle.position.lng, vehicle.position.lat]);
       }
 
-      (marker.getElement() as HTMLElement).style.backgroundColor = statusToColor(vehicle.status);
+      const el = marker.getElement() as HTMLElement;
+      const isSelected = selectedVehicleId === vehicle.id;
+      el.className = '';
+      el.style.width = isSelected ? '20px' : '16px';
+      el.style.height = isSelected ? '20px' : '16px';
+      el.style.borderRadius = '50%';
+      el.style.border = '3px solid #FFFFFF';
+      el.style.boxShadow = isSelected
+        ? `0 0 0 3px rgba(20,121,255,0.55), 0 0 12px rgba(20,121,255,0.9), 0 1px 3px rgba(0,0,0,0.4)`
+        : '0 1px 3px rgba(0,0,0,0.35)';
+      el.style.backgroundColor = statusToColor(vehicle.status);
+      el.onclick = () => setSelectedVehicleId(vehicle.id);
+
+      if (selectedVehicleId === vehicle.id) {
+        let label = el.querySelector('.vehicle-label');
+        if (!label) {
+          label = document.createElement('span');
+          label.className = 'vehicle-label';
+          (label as HTMLElement).style.cssText =
+            'position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;white-space:nowrap;' +
+            'background:#0B1F33;color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:8px;';
+          el.appendChild(label);
+        }
+        (label as HTMLElement).textContent = vehicle.plate;
+      } else {
+        el.querySelector('.vehicle-label')?.remove();
+      }
     }
 
     for (const [id, marker] of markersRef.current) {
@@ -142,99 +230,123 @@ export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
       positioned.forEach((v) => bounds.extend([v.position.lng, v.position.lat]));
       map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 0 });
     }
-  }, [vehicles, mapReady]);
+  }, [vehicles, mapReady, selectedVehicleId]);
 
-  // Trace GeoJSON en couche togglable.
+  // Manage trace drawing on toggle
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-
-    function removeTraceLayer() {
-      if (map!.getLayer(TRACE_LAYER_ID)) map!.removeLayer(TRACE_LAYER_ID);
-      if (map!.getSource(TRACE_SOURCE_ID)) map!.removeSource(TRACE_SOURCE_ID);
+    if (traceVisible && tracePointsRef.current.length >= 2) {
+      drawTrace(tracePointsRef.current);
+    } else {
+      const map = mapRef.current;
+      if (map) {
+        if (map.getLayer(TRACE_LAYER_ID)) map.removeLayer(TRACE_LAYER_ID);
+        if (map.getSource(TRACE_SOURCE_ID)) map.removeSource(TRACE_SOURCE_ID);
+      }
     }
+  }, [traceVisible, drawTrace]);
 
-    if (!traceVisible || !traceQuery.data) {
-      removeTraceLayer();
-      return;
+  // Reset trace state when selecting a different vehicle
+  useEffect(() => {
+    if (selectedVehicleId) {
+      const newMissionId = vehicles.find((v) => v.id === selectedVehicleId)?.activeMissionId ?? null;
+      if (newMissionId !== previousMissionIdRef.current) {
+        previousMissionIdRef.current = newMissionId;
+        tracePointsRef.current = [];
+        setMissionTrace(null);
+        setTraceVisible(false);
+        const map = mapRef.current;
+        if (map) {
+          if (map.getLayer(TRACE_LAYER_ID)) map.removeLayer(TRACE_LAYER_ID);
+          if (map.getSource(TRACE_SOURCE_ID)) map.removeSource(TRACE_SOURCE_ID);
+        }
+      }
     }
-
-    removeTraceLayer();
-    map.addSource(TRACE_SOURCE_ID, { type: 'geojson', data: traceQuery.data });
-    map.addLayer({
-      id: TRACE_LAYER_ID,
-      type: 'line',
-      source: TRACE_SOURCE_ID,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#2563eb', 'line-width': 3 },
-    });
-
-    return () => removeTraceLayer();
-  }, [traceVisible, traceQuery.data, mapReady]);
+  }, [selectedVehicleId, vehicles]);
 
   return (
-    <div className="relative h-full w-full">
-      <div ref={containerRef} className="h-full w-full" data-testid="maplibre-container" />
+    <div className="flex h-full w-full gap-3 p-3">
+      <div className={cn('relative min-w-0 flex-1', selectedVehicle ? 'xl:basis-3/4' : '')}>
+        <div ref={containerRef} className="h-full w-full overflow-hidden rounded-2xl border border-border shadow-card" data-testid="maplibre-container" />
 
-      <div className="pointer-events-none absolute left-4 top-4 flex max-w-[min(46rem,calc(100%-2rem))] flex-col gap-3">
-        <div className="pointer-events-auto rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-xs"
-            aria-expanded={regionPanelOpen}
-            onClick={() => setRegionPanelOpen((open) => !open)}
-          >
-            <span className="truncate">
-              <span className="font-medium">Région</span>
-              {regionPath.length > 0 && (
-                <span className="text-muted-foreground"> — {regionPath.join(' › ')}</span>
-              )}
-            </span>
-            <span aria-hidden className="text-muted-foreground">
-              {regionPanelOpen ? '▲' : '▼'}
-            </span>
-          </button>
-          {regionPanelOpen && (
-            <div className="border-t border-border px-3 pb-3 pt-2">
-              <RegionSelector
-                dense
-                selection={region}
-                onSelectionChange={setRegion}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-              />
+        {selectedVehicle && (
+          <div className="absolute right-3 top-3 z-10 hidden xl:block">
+            <ConnectionStatus state={connected ? 'live' : 'offline'} />
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute left-4 top-4 z-10 flex max-w-[min(38rem,calc(100%-2rem))] flex-col gap-2.5">
+          <div className="pointer-events-auto rounded-xl border border-border bg-card/95 shadow-card backdrop-blur">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-4 px-3.5 py-2.5 text-xs"
+              aria-expanded={regionPanelOpen}
+              onClick={() => setRegionPanelOpen((open) => !open)}
+            >
+              <span className="truncate">
+                <span className="font-semibold text-foreground">Région</span>
+                {regionPath.length > 0 && (
+                  <span className="text-muted-foreground"> — {regionPath.join(' > ')}</span>
+                )}
+              </span>
+              <span aria-hidden className="text-muted-foreground">
+                {regionPanelOpen ? '−' : '+'}
+              </span>
+            </button>
+            {regionPanelOpen && (
+              <div className="border-t border-border px-3.5 pb-3 pt-2.5">
+                <RegionSelector
+                  dense
+                  selection={region}
+                  onSelectionChange={setRegion}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                />
+              </div>
+            )}
+          </div>
+          <TrackingLegend />
+          {!connected && (
+            <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-danger/30 bg-card/95 px-3.5 py-2.5 text-xs font-semibold text-danger shadow-card backdrop-blur">
+              <ConnectionStatus state="offline" />
+              <span>Connexion temps réel interrompue — les positions peuvent être en retard.</span>
             </div>
           )}
         </div>
-        <TrackingLegend />
-        {!connected && (
-          <div className="pointer-events-auto rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
-            Connexion temps réel interrompue — les positions peuvent ne pas être à jour.
+
+        {vehicles.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <div className="pointer-events-auto rounded-2xl border border-border bg-card p-6 shadow-pop">
+              <EmptyState title="Aucun véhicule en suivi actif" description="Les véhicules connectés apparaîtront ici en temps réel." />
+            </div>
           </div>
         )}
       </div>
 
-      {vehicles.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <p className="pointer-events-auto rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground shadow-sm">
-            Aucun véhicule en suivi actif pour le moment.
-          </p>
-        </div>
-      )}
-
-      {selectedVehicle && (
-        <div className="pointer-events-none absolute right-4 top-4">
-          <TracePanel
+      <div
+        className={cn(
+          'w-full shrink-0 flex-col gap-3 overflow-visible',
+          selectedVehicle ? 'flex xl:w-[25%] xl:min-w-[22rem]' : 'hidden w-0',
+        )}
+      >
+        {selectedVehicle && (
+          <VehiclePanel
             vehicle={selectedVehicle}
             traceVisible={traceVisible}
+            connected={connected}
             onToggleTrace={() => setTraceVisible((v) => !v)}
             onClose={() => {
               setSelectedVehicleId(null);
               setTraceVisible(false);
+              setMissionTrace(null);
+              tracePointsRef.current = [];
             }}
+            onMissionTraceLoaded={handleMissionTraceLoaded}
+            onLivePoint={handleLivePoint}
+            socket={socket}
+            trace={missionTrace}
           />
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

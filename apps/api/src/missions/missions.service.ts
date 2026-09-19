@@ -170,21 +170,22 @@ export class MissionsService {
       throw new ConflictException(`Impossible de démarrer une mission au statut ${mission.status}`);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       await tx.mission.update({
         where: { id: missionId },
         data: { status: MissionStatus.STARTED, actualStart: new Date() },
       });
       await tx.missionEvent.create({ data: { missionId, type: 'mission.started', payload: {} } });
-      const updated = await tx.mission.findUniqueOrThrow({ where: { id: missionId }, include: STEP_INCLUDE });
-      this.realtime.emitMissionStarted({
-        organizationId: updated.organizationId,
-        missionId,
-        driverId: updated.driverId,
-        vehicleId: updated.vehicleId,
-      });
-      return updated;
+      return tx.mission.findUniqueOrThrow({ where: { id: missionId }, include: STEP_INCLUDE });
     });
+    // Émis après commit : l'événement n'est diffusé que si la transition est durable.
+    this.realtime.emitMissionStarted({
+      organizationId: updated.organizationId,
+      missionId,
+      driverId: updated.driverId,
+      vehicleId: updated.vehicleId,
+    });
+    return updated;
   }
 
   /**
@@ -208,7 +209,7 @@ export class MissionsService {
     const finalStatus = allValidated ? MissionStatus.COMPLETED : MissionStatus.NOT_COMPLETED;
     const eventType = allValidated ? 'mission.completed' : 'mission.not_completed';
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       await tx.mission.update({ where: { id: missionId }, data: { status: finalStatus, actualEnd: new Date() } });
       await tx.missionEvent.create({
         data: {
@@ -220,10 +221,11 @@ export class MissionsService {
           },
         },
       });
-      const updated = await tx.mission.findUniqueOrThrow({ where: { id: missionId }, include: STEP_INCLUDE });
-      this.realtime.emitMissionCompleted({ organizationId: updated.organizationId, missionId, status: finalStatus });
-      return updated;
+      return tx.mission.findUniqueOrThrow({ where: { id: missionId }, include: STEP_INCLUDE });
     });
+    // Émis après commit : l'événement n'est diffusé que si la transition est durable.
+    this.realtime.emitMissionCompleted({ organizationId: updated.organizationId, missionId, status: finalStatus });
+    return updated;
   }
 
   async cancel(organizationId: string, id: string, reason: string, actorId?: string) {

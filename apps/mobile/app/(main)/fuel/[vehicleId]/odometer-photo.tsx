@@ -9,12 +9,15 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { ArrowLeft, Camera, Send } from 'lucide-react-native';
 import { TrackingService } from '../../../../src/services/tracking.service';
 import { FuelApi } from '../../../../src/api/fuel.api';
 import { FuelQueueRepository } from '../../../../src/database/fuel-queue.repository';
 import { FuelType } from '../../../../src/types/fuel.types';
+import { useSync } from '../../../../src/context/SyncContext';
 import { BigButton } from '../../../../src/components/BigButton';
-import { AppTheme } from '../../../../src/theme/colors';
+import { OfflineBanner } from '../../../../src/components/OfflineBanner';
+import { AppRadius, AppShadow, AppTheme } from '../../../../src/theme/colors';
 
 export default function FuelOdometerPhotoScreen() {
   const params = useLocalSearchParams<{
@@ -27,6 +30,7 @@ export default function FuelOdometerPhotoScreen() {
     receiptPhotoUri: string;
   }>();
 
+  const { isConnected, counts } = useSync();
   const [permission, requestPermission] = useCameraPermissions();
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,6 +41,9 @@ export default function FuelOdometerPhotoScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.permissionCard}>
+          <View style={styles.permissionIcon}>
+            <Camera size={24} color={AppTheme.primary} />
+          </View>
           <Text style={styles.permissionTitle}>Caméra requise</Text>
           <Text style={styles.permissionSubtitle}>
             L&apos;appareil photo est nécessaire pour photographier le compteur kilométrique du camion.
@@ -93,8 +100,9 @@ export default function FuelOdometerPhotoScreen() {
 
       if (result.success) {
         router.replace({
-          pathname: `/(main)/fuel/${params.vehicleId}/result`,
+          pathname: '/(main)/fuel/[vehicleId]/result',
           params: {
+            vehicleId: params.vehicleId,
             success: 'true',
             anomaliesCount: result.anomalies?.length ? String(result.anomalies.length) : '0',
           },
@@ -117,13 +125,17 @@ export default function FuelOdometerPhotoScreen() {
         });
 
         router.replace({
-          pathname: `/(main)/fuel/${params.vehicleId}/result`,
-          params: { queued: 'true' },
+          pathname: '/(main)/fuel/[vehicleId]/result',
+          params: {
+            vehicleId: params.vehicleId,
+            queued: 'true',
+          },
         });
       } else {
         router.replace({
-          pathname: `/(main)/fuel/${params.vehicleId}/result`,
+          pathname: '/(main)/fuel/[vehicleId]/result',
           params: {
+            vehicleId: params.vehicleId,
             success: 'false',
             errorCode: result.errorCode,
             message: result.message,
@@ -149,19 +161,26 @@ export default function FuelOdometerPhotoScreen() {
             onPress={() => (photoUri ? setPhotoUri(null) : router.back())}
             style={styles.actionPill}
           >
-            <Text style={styles.actionPillText}>{photoUri ? '← Reprendre' : '← Reçu'}</Text>
+            <ArrowLeft size={15} color="#FFFFFF" />
+            <Text style={styles.actionPillText}>{photoUri ? 'Reprendre' : 'Reçu'}</Text>
           </TouchableOpacity>
-          <Text style={styles.topTitle}>2/2 Photo du Compteur</Text>
-          <View style={{ width: 80 }} />
+          <View style={styles.stepPill}>
+            <Camera size={13} color="#FFFFFF" />
+            <Text style={styles.topTitle}>2/2 Photo du Compteur</Text>
+          </View>
+          <View style={styles.topSpacer} />
         </View>
+
+        {!isConnected && <OfflineBanner pendingCount={counts.fuelPending} />}
 
         <View style={styles.bottomBar}>
           {photoUri ? (
             <BigButton
               label="Envoyer la déclaration"
+              variant="success"
+              icon={<Send size={20} color="#FFFFFF" />}
               isLoading={isSubmitting}
               onPressed={handleSubmit}
-              style={styles.submitBtn}
             />
           ) : (
             <View style={styles.captureContainer}>
@@ -190,15 +209,27 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
     justifyContent: 'center',
     padding: 24,
   },
   permissionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
     padding: 24,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    ...AppShadow.card,
+  },
+  permissionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: AppRadius.md,
+    backgroundColor: AppTheme.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   permissionTitle: {
     fontSize: 20,
@@ -211,6 +242,7 @@ const styles = StyleSheet.create({
     color: AppTheme.textSecondary,
     textAlign: 'center',
     marginBottom: 24,
+    lineHeight: 20,
   },
   overlay: {
     flex: 1,
@@ -224,20 +256,35 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   actionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: AppRadius.pill,
   },
   actionPillText: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+    marginLeft: 6,
+  },
+  stepPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: AppRadius.pill,
   },
   topTitle: {
     color: '#FFFFFF',
     fontWeight: '800',
-    fontSize: 16,
+    fontSize: 13,
+    marginLeft: 6,
+  },
+  topSpacer: {
+    width: 84,
   },
   bottomBar: {
     padding: 24,
@@ -251,9 +298,11 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     backgroundColor: 'rgba(255,255,255,0.3)',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   captureInner: {
     width: 64,
@@ -269,8 +318,5 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
-  },
-  submitBtn: {
-    backgroundColor: AppTheme.success,
   },
 });

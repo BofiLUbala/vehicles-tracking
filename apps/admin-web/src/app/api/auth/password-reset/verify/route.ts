@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { setSessionCookies } from '@/lib/session';
 
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3001/api/v1';
 
-/** Proxy vers POST /auth/admin/verify-otp. Pose les cookies de session en cas de succès. */
+/** Proxy vers POST /auth/password-reset/verify (réponse générique, sans cookies). */
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
@@ -14,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   let upstream: Response;
   try {
-    upstream = await fetch(`${API_BASE_URL}/auth/admin/verify-otp`, {
+    upstream = await fetch(`${API_BASE_URL}/auth/password-reset/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -24,12 +23,5 @@ export async function POST(req: NextRequest) {
   }
 
   const data = await upstream.json().catch(() => ({}));
-
-  if (!upstream.ok) {
-    return NextResponse.json(data, { status: upstream.status });
-  }
-
-  const res = NextResponse.json({ requiresOtp: false });
-  setSessionCookies(res, data.accessToken, data.refreshToken);
-  return res;
+  return NextResponse.json(data, { status: upstream.status });
 }

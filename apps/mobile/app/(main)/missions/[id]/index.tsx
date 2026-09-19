@@ -8,14 +8,17 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, Navigation2 } from 'lucide-react-native';
 import { MissionsApi } from '../../../../src/api/missions.api';
 import { useTracking } from '../../../../src/context/TrackingContext';
+import { useMissionRealtime } from '../../../../src/hooks/useMissionRealtime';
 import { Mission, MissionStep } from '../../../../src/types/mission.types';
 import { StatusBadge } from '../../../../src/components/StatusBadge';
 import { BigButton } from '../../../../src/components/BigButton';
+import { MissionStepCard } from '../../../../src/components/MissionStepCard';
 import { LoadingView } from '../../../../src/components/LoadingView';
 import { ErrorView } from '../../../../src/components/ErrorView';
-import { AppTheme } from '../../../../src/theme/colors';
+import { AppTheme, AppRadius, AppShadow, AppSpacing } from '../../../../src/theme/colors';
 
 export default function MissionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,6 +26,7 @@ export default function MissionDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const { startTracking } = useTracking();
   const router = useRouter();
 
@@ -44,9 +48,17 @@ export default function MissionDetailScreen() {
     loadMission();
   }, [loadMission]);
 
+  // Rafraîchissement sur événements temps réel (ex. étape validée depuis un autre écran/appareil).
+  useMissionRealtime({
+    missionId: mission?.id ?? id ?? null,
+    vehicleId: mission?.vehicleId ?? null,
+    onMissionEvent: loadMission,
+  });
+
   const handleStartMission = async () => {
     if (!mission) return;
     setIsStarting(true);
+    setStartError(null);
     try {
       const started = await MissionsApi.startMission(mission.id);
       setMission(started);
@@ -54,9 +66,20 @@ export default function MissionDetailScreen() {
       await startTracking(started.vehicleId, started.id);
       router.replace(`/(main)/missions/${mission.id}/progress`);
     } catch {
-      // If error or already started, try to proceed
-      await startTracking(mission.vehicleId, mission.id);
-      router.replace(`/(main)/missions/${mission.id}/progress`);
+      // Un échec peut simplement signifier que la mission est déjà démarrée (reprise) : on vérifie
+      // l'état réel avant d'afficher une erreur, sans jamais poursuivre à l'aveugle.
+      try {
+        const fresh = await MissionsApi.getMissionDetail(mission.id);
+        if (fresh.status === 'STARTED' || fresh.status === 'IN_PROGRESS') {
+          setMission(fresh);
+          await startTracking(fresh.vehicleId, fresh.id);
+          router.replace(`/(main)/missions/${mission.id}/progress`);
+          return;
+        }
+      } catch {
+        // Ignoré : le message d'erreur générique ci-dessous couvre les deux cas.
+      }
+      setStartError('Impossible de démarrer la mission. Vérifiez votre connexion puis réessayez.');
     } finally {
       setIsStarting(false);
     }
@@ -81,80 +104,53 @@ export default function MissionDetailScreen() {
   const isStarted = mission.status === 'STARTED' || mission.status === 'IN_PROGRESS';
   const isCompleted = mission.status === 'COMPLETED';
 
+  const sortedSteps = mission.steps.sort((a, b) => a.order - b.order);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Retour</Text>
+          <ArrowLeft size={20} color={AppTheme.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Mission #{mission.id.substring(0, 8).toUpperCase()}</Text>
-        <StatusBadge status={mission.status} />
+        <StatusBadge status={mission.status} dot />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Informations du véhicule</Text>
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Véhicule assigné :</Text>
+            <Text style={styles.infoLabel}>Véhicule assigné</Text>
             <Text style={styles.infoValue}>{mission.vehiclePlateNumber || 'Non spécifié'}</Text>
           </View>
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Total des étapes :</Text>
+            <Text style={styles.infoLabel}>Total des étapes</Text>
             <Text style={styles.infoValue}>{mission.steps.length} étape(s)</Text>
           </View>
         </View>
 
         <Text style={styles.sectionTitle}>Étapes ordonnées</Text>
 
-        {mission.steps
-          .sort((a, b) => a.order - b.order)
-          .map((step: MissionStep, index: number) => {
-            const isStepValidated = step.status === 'VALIDATED';
-
-            return (
-              <View
-                key={step.id}
-                style={[
-                  styles.stepCard,
-                  isStepValidated ? styles.stepValidated : null,
-                ]}
-              >
-                <View style={styles.stepOrderBadge}>
-                  <Text style={styles.stepOrderText}>{index + 1}</Text>
-                </View>
-
-                <View style={styles.stepContent}>
-                  <View style={styles.stepHeader}>
-                    <Text style={styles.stepActionType}>
-                      {step.actionType === 'COLLECT'
-                        ? 'Collecte'
-                        : step.actionType === 'DROPOFF'
-                        ? 'Dépôt'
-                        : step.actionType === 'WEIGH'
-                        ? 'Pesage'
-                        : 'Contrôle'}
-                    </Text>
-                    <StatusBadge status={step.status} />
-                  </View>
-
-                  <Text style={styles.stepLocationName}>{step.location.name}</Text>
-                  {step.location.address && (
-                    <Text style={styles.stepAddress}>{step.location.address}</Text>
-                  )}
-                  <Text style={styles.stepRadius}>
-                    Rayon autorisé : {step.location.allowedRadius} m
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
+        {sortedSteps.map((step: MissionStep, index: number) => {
+          const isCurrentStep = step.status !== 'VALIDATED' && (index === 0 || sortedSteps[index - 1]?.status === 'VALIDATED');
+          return (
+            <MissionStepCard
+              key={step.id}
+              step={step}
+              index={index}
+              isCurrent={isCurrentStep}
+            />
+          );
+        })}
       </ScrollView>
 
       {!isCompleted && (
         <View style={styles.bottomBar}>
+          {startError && <Text style={styles.startError}>{startError}</Text>}
           <BigButton
             label={isStarted ? 'Continuer la mission' : 'Démarrer la mission'}
             isLoading={isStarting}
+            icon={<Navigation2 size={20} color="#FFFFFF" />}
             onPressed={isStarted ? () => router.push(`/(main)/missions/${mission.id}/progress`) : handleStartMission}
           />
         </View>
@@ -166,56 +162,59 @@ export default function MissionDetailScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: AppSpacing.xl,
+    paddingVertical: AppSpacing.md,
+    backgroundColor: AppTheme.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: AppTheme.border,
   },
   backBtn: {
-    paddingVertical: 4,
-    paddingRight: 8,
-  },
-  backText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: AppTheme.primary,
+    width: 36,
+    height: 36,
+    borderRadius: AppRadius.pill,
+    backgroundColor: AppTheme.subtle,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '800',
     color: AppTheme.text,
+    flex: 1,
+    marginLeft: AppSpacing.md,
   },
   content: {
-    padding: 20,
+    padding: AppSpacing.xl,
     paddingBottom: 100,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 18,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: AppSpacing.lg,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 24,
+    borderColor: AppTheme.border,
+    marginBottom: AppSpacing.xxl,
+    ...AppShadow.card,
   },
   cardTitle: {
     fontSize: 15,
     fontWeight: '800',
     color: AppTheme.text,
-    marginBottom: 12,
+    marginBottom: AppSpacing.md,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    alignItems: 'center',
+    paddingVertical: AppSpacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: AppTheme.subtle,
   },
   infoLabel: {
     fontSize: 14,
@@ -230,75 +229,25 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
     color: AppTheme.text,
-    marginBottom: 14,
-  },
-  stepCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  stepValidated: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#BBF7D0',
-  },
-  stepOrderBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 14,
-  },
-  stepOrderText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: AppTheme.text,
-  },
-  stepContent: {
-    flex: 1,
-  },
-  stepHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  stepActionType: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: AppTheme.primary,
-    textTransform: 'uppercase',
-  },
-  stepLocationName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: AppTheme.text,
-    marginBottom: 2,
-  },
-  stepAddress: {
-    fontSize: 13,
-    color: AppTheme.textSecondary,
-    marginBottom: 4,
-  },
-  stepRadius: {
-    fontSize: 11,
-    color: AppTheme.textMuted,
+    marginBottom: AppSpacing.md,
   },
   bottomBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 24,
+    backgroundColor: AppTheme.card,
+    paddingHorizontal: AppSpacing.xl,
+    paddingTop: AppSpacing.md,
+    paddingBottom: AppSpacing.xxl,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: AppTheme.border,
+  },
+  startError: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: AppTheme.danger,
+    marginBottom: AppSpacing.sm,
+    textAlign: 'center',
   },
 });

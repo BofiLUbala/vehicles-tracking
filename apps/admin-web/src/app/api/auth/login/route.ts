@@ -5,8 +5,8 @@ const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3001/api/v1';
 
 /**
  * Proxy vers POST /auth/admin/login. Le navigateur ne voit jamais les tokens bruts : en cas de
- * succès ils sont posés en cookies httpOnly par cette route ; si un OTP est requis (nouvel
- * appareil), seule l'information `requiresOtp` est renvoyée.
+ * succès ils sont posés en cookies httpOnly par cette route. La connexion admin est e-mail +
+ * mot de passe, sans OTP.
  */
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -33,12 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data, { status: upstream.status });
   }
 
-  if (data.requiresOtp) {
-    // `devCode` n'est renseigné par l'API qu'en développement (OTP_DEV_EXPOSE_CODE=true).
-    return NextResponse.json({ requiresOtp: true, message: data.message, devCode: data.devCode });
-  }
-
-  const res = NextResponse.json({ requiresOtp: false });
+  const res = NextResponse.json({ ok: true });
   setSessionCookies(res, data.accessToken, data.refreshToken);
   return res;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,41 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
+import { ArrowLeft, BadgeCheck, Building2, CreditCard, LogOut, Package, Phone, UserRound } from 'lucide-react-native';
 import { useAuth } from '../../../src/context/AuthContext';
+import { AuthApi } from '../../../src/api/auth.api';
+import { Driver } from '../../../src/types/auth.types';
 import { BigButton } from '../../../src/components/BigButton';
-import { AppTheme } from '../../../src/theme/colors';
+import { AppRadius, AppShadow, AppSpacing, AppTheme } from '../../../src/theme/colors';
+
+const APP_VERSION = Constants.expoConfig?.version ?? '0.1.0';
 
 export default function ProfileScreen() {
   const { driver, logout } = useAuth();
+  const [profile, setProfile] = useState<Driver | null>(driver);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setProfile(driver);
+  }, [driver]);
+
+  useEffect(() => {
+    // Rafraîchit le profil pour récupérer les champs absents de la réponse de connexion
+    // (nom d'organisation, numéro de permis).
+    let cancelled = false;
+    AuthApi.getProfile()
+      .then((fresh) => {
+        if (!cancelled) setProfile(fresh);
+      })
+      .catch(() => {
+        // Conserve le profil déjà connu en cas d'échec réseau.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -27,10 +54,10 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Retour</Text>
+          <ArrowLeft size={20} color={AppTheme.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profil Chauffeur</Text>
-        <View style={{ width: 60 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -38,14 +65,17 @@ export default function ProfileScreen() {
         <View style={styles.profileHeaderCard}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
-              {driver?.firstName?.[0] || 'C'}
-              {driver?.lastName?.[0] || 'H'}
+              {profile?.firstName?.[0] || 'C'}
+              {profile?.lastName?.[0] || 'H'}
             </Text>
           </View>
           <Text style={styles.driverName}>
-            {driver?.firstName} {driver?.lastName}
+            {profile?.firstName} {profile?.lastName}
           </Text>
-          <Text style={styles.driverRole}>Chauffeur de collecte</Text>
+          <View style={styles.roleRow}>
+            <UserRound size={14} color={AppTheme.textSecondary} />
+            <Text style={styles.driverRole}>{profile ? 'Chauffeur de collecte' : '—'}</Text>
+          </View>
         </View>
 
         {/* Profile info card */}
@@ -53,20 +83,35 @@ export default function ProfileScreen() {
           <Text style={styles.cardTitle}>Coordonnées & Documents</Text>
 
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Téléphone WhatsApp</Text>
-            <Text style={styles.infoValue}>{driver?.phone || 'Non renseigné'}</Text>
+            <View style={styles.infoIconWrap}>
+              <Phone size={16} color={AppTheme.info} />
+            </View>
+            <View style={styles.infoBody}>
+              <Text style={styles.infoLabel}>Téléphone WhatsApp</Text>
+              <Text style={styles.infoValue}>{profile?.phone || 'Non renseigné'}</Text>
+            </View>
           </View>
 
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Numéro de permis</Text>
-            <Text style={styles.infoValue}>{driver?.licenseNumber || 'Non renseigné'}</Text>
+            <View style={styles.infoIconWrap}>
+              <BadgeCheck size={16} color={AppTheme.primary} />
+            </View>
+            <View style={styles.infoBody}>
+              <Text style={styles.infoLabel}>Numéro de permis</Text>
+              <Text style={styles.infoValue}>{profile?.licenseNumber || 'Non renseigné'}</Text>
+            </View>
           </View>
 
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Statut du compte</Text>
-            <Text style={[styles.infoValue, { color: AppTheme.success }]}>
-              {driver?.status === 'ACTIVE' ? 'Actif' : driver?.status || 'Inconnu'}
-            </Text>
+          <View style={[styles.infoRow, styles.infoRowLast]}>
+            <View style={styles.infoIconWrap}>
+              <CreditCard size={16} color={AppTheme.success} />
+            </View>
+            <View style={styles.infoBody}>
+              <Text style={styles.infoLabel}>Statut du compte</Text>
+              <Text style={[styles.infoValue, { color: AppTheme.success }]}>
+                {profile?.status === 'ACTIVE' ? 'Actif' : profile?.status || 'Inconnu'}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -74,19 +119,30 @@ export default function ProfileScreen() {
           <Text style={styles.cardTitle}>Application</Text>
 
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Version</Text>
-            <Text style={styles.infoValue}>v0.1.0 (Expo React Native)</Text>
+            <View style={styles.infoIconWrap}>
+              <Package size={16} color={AppTheme.textMuted} />
+            </View>
+            <View style={styles.infoBody}>
+              <Text style={styles.infoLabel}>Version</Text>
+              <Text style={styles.infoValue}>v{APP_VERSION} (Expo React Native)</Text>
+            </View>
           </View>
 
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Organisation</Text>
-            <Text style={styles.infoValue}>Kinshasa Waste Logistics</Text>
+          <View style={[styles.infoRow, styles.infoRowLast]}>
+            <View style={styles.infoIconWrap}>
+              <Building2 size={16} color={AppTheme.textMuted} />
+            </View>
+            <View style={styles.infoBody}>
+              <Text style={styles.infoLabel}>Organisation</Text>
+              <Text style={styles.infoValue}>{profile?.organizationName || 'Non renseignée'}</Text>
+            </View>
           </View>
         </View>
 
         <BigButton
           label="Se déconnecter"
           variant="danger"
+          icon={<LogOut size={20} color="#FFFFFF" />}
           isLoading={isLoggingOut}
           onPressed={handleLogout}
           style={styles.logoutBtn}
@@ -99,56 +155,59 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: AppSpacing.xl,
+    paddingVertical: AppSpacing.md,
+    backgroundColor: AppTheme.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: AppTheme.border,
   },
   backBtn: {
-    paddingVertical: 4,
-    paddingRight: 8,
+    width: 36,
+    height: 36,
+    borderRadius: AppRadius.pill,
+    backgroundColor: AppTheme.subtle,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  backText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: AppTheme.primary,
+  headerSpacer: {
+    width: 36,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '800',
     color: AppTheme.text,
   },
   content: {
-    padding: 20,
+    padding: AppSpacing.xl,
     paddingBottom: 40,
   },
   profileHeaderCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: AppSpacing.xxl,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 16,
+    borderColor: AppTheme.border,
+    marginBottom: AppSpacing.lg,
+    ...AppShadow.card,
   },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: AppTheme.primary,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: AppTheme.navy,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: AppSpacing.md,
   },
   avatarText: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '900',
     color: '#FFFFFF',
   },
@@ -156,7 +215,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: AppTheme.text,
-    marginBottom: 4,
+    marginBottom: AppSpacing.xs,
+  },
+  roleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   driverRole: {
     fontSize: 14,
@@ -164,29 +228,46 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 18,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: AppSpacing.lg,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 16,
+    borderColor: AppTheme.border,
+    marginBottom: AppSpacing.lg,
+    ...AppShadow.card,
   },
   cardTitle: {
     fontSize: 15,
     fontWeight: '800',
     color: AppTheme.text,
-    marginBottom: 12,
+    marginBottom: AppSpacing.sm,
   },
   infoRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
+    alignItems: 'center',
+    paddingVertical: AppSpacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: AppTheme.subtle,
+  },
+  infoRowLast: {
+    borderBottomWidth: 0,
+  },
+  infoIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: AppRadius.sm,
+    backgroundColor: AppTheme.subtle,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: AppSpacing.md,
+  },
+  infoBody: {
+    flex: 1,
   },
   infoLabel: {
-    fontSize: 14,
+    fontSize: 13,
     color: AppTheme.textSecondary,
+    marginBottom: 2,
   },
   infoValue: {
     fontSize: 14,
@@ -194,6 +275,6 @@ const styles = StyleSheet.create({
     color: AppTheme.text,
   },
   logoutBtn: {
-    marginTop: 12,
+    marginTop: AppSpacing.xs,
   },
 });

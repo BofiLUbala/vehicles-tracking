@@ -5,7 +5,8 @@ import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
-import { AdminVerifyOtpDto } from './dto/admin-verify-otp.dto';
+import { DriverLoginDto } from './dto/driver-login.dto';
+import { RequestPasswordResetDto, VerifyPasswordResetDto } from './dto/password-reset.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RequestAdminActivationDto, VerifyAdminActivationDto } from './dto/activate-admin.dto';
@@ -20,38 +21,55 @@ export class AuthController {
 
   @Public()
   @Post('otp/request')
-  @ApiOperation({ summary: "Demander un code OTP (chauffeur, connexion par téléphone)" })
+  @ApiOperation({ summary: "Demander un code OTP d’activation (inscription chauffeur, mode SIGN_UP uniquement)" })
   @ApiResponse({ status: 201, description: 'Code envoyé (réponse générique, ne confirme pas l\'existence du compte)' })
+  @ApiResponse({ status: 410, description: 'La connexion par code n’existe plus (mode LOGIN désactivé)' })
   requestOtp(@Body() dto: RequestOtpDto, @Ip() ip: string) {
     return this.auth.requestOtp(dto, ip);
   }
 
   @Public()
   @Post('otp/verify')
-  @ApiOperation({ summary: 'Vérifier le code OTP et obtenir les tokens (chauffeur)' })
+  @ApiOperation({ summary: 'Vérifier le code OTP d’activation et obtenir les tokens (inscription chauffeur)' })
+  @ApiResponse({ status: 410, description: 'La connexion par code n’existe plus (mode LOGIN désactivé)' })
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.auth.verifyOtp(dto);
   }
 
   @Public()
   @Post('otp/resend')
-  @ApiOperation({ summary: 'Renvoyer un code OTP (soumis à un délai anti-spam)' })
+  @ApiOperation({ summary: 'Renvoyer un code OTP d’activation (soumis à un délai anti-spam)' })
   resendOtp(@Body() dto: ResendOtpDto, @Ip() ip: string) {
     return this.auth.resendOtp(dto, ip);
   }
 
   @Public()
-  @Post('admin/login')
-  @ApiOperation({ summary: 'Connexion admin par mot de passe (OTP e-mail requis pour un nouvel appareil)' })
-  adminLogin(@Body() dto: AdminLoginDto, @Ip() ip: string) {
-    return this.auth.adminLogin(dto, ip);
+  @Post('driver/login')
+  @ApiOperation({ summary: 'Connexion chauffeur par identifiant + mot de passe (sans OTP)' })
+  driverLogin(@Body() dto: DriverLoginDto, @Ip() ip: string) {
+    return this.auth.driverLogin(dto, ip);
   }
 
   @Public()
-  @Post('admin/verify-otp')
-  @ApiOperation({ summary: "Vérifier l'OTP admin (nouvel appareil) et obtenir les tokens" })
-  adminVerifyOtp(@Body() dto: AdminVerifyOtpDto) {
-    return this.auth.adminVerifyOtp(dto);
+  @Post('password-reset/request')
+  @ApiOperation({ summary: 'Demander un code OTP de récupération de mot de passe' })
+  @ApiResponse({ status: 201, description: 'Réponse générique, ne confirme pas l\'existence du compte' })
+  requestPasswordReset(@Body() dto: RequestPasswordResetDto, @Ip() ip: string) {
+    return this.auth.requestPasswordReset(dto, ip);
+  }
+
+  @Public()
+  @Post('password-reset/verify')
+  @ApiOperation({ summary: 'Vérifier le code de récupération et définir un nouveau mot de passe' })
+  verifyPasswordReset(@Body() dto: VerifyPasswordResetDto, @Ip() ip: string) {
+    return this.auth.verifyPasswordReset(dto, ip);
+  }
+
+  @Public()
+  @Post('admin/login')
+  @ApiOperation({ summary: 'Connexion admin par e-mail + mot de passe (sans OTP)' })
+  adminLogin(@Body() dto: AdminLoginDto, @Ip() ip: string) {
+    return this.auth.adminLogin(dto, ip);
   }
 
   @Public()

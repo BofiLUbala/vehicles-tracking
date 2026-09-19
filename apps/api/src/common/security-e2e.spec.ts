@@ -1,10 +1,10 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import * as argon2 from 'argon2';
 import { AppModule } from '../app.module';
 import { AllExceptionsFilter } from './filters/all-exceptions.filter';
 import { PrismaService } from '../prisma/prisma.service';
-import { StubWhatsappSender } from '../auth/senders/stub-whatsapp.sender';
 
 const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -22,7 +22,6 @@ function randomPhone() {
 describe('Sécurité — bout en bout (section 18)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
-  let stubSender: StubWhatsappSender;
 
   const driverIds: string[] = [];
 
@@ -35,7 +34,6 @@ describe('Sécurité — bout en bout (section 18)', () => {
     await app.init();
 
     prisma = moduleRef.get(PrismaService);
-    stubSender = moduleRef.get(StubWhatsappSender);
   }, 30_000);
 
   afterAll(async () => {
@@ -44,13 +42,22 @@ describe('Sécurité — bout en bout (section 18)', () => {
   });
 
   async function driverAccessToken(): Promise<string> {
+    // Connexion chauffeur par mot de passe (l'OTP n'est plus un moyen de connexion).
     const phone = randomPhone();
-    const driver = await prisma.driver.create({ data: { organizationId: DEMO_ORG_ID, firstName: 'Sec', lastName: 'Test', phone } });
+    const password = 'E2eDriverPass123';
+    const driver = await prisma.driver.create({
+      data: {
+        organizationId: DEMO_ORG_ID,
+        firstName: 'Sec',
+        lastName: 'Test',
+        phone,
+        status: 'ACTIVE',
+        passwordHash: await argon2.hash(password),
+      },
+    });
     driverIds.push(driver.id);
 
-    await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({ phone }).expect(201);
-    const code = stubSender.getLastCode(phone);
-    const res = await request(app.getHttpServer()).post('/api/v1/auth/otp/verify').send({ phone, code }).expect(201);
+    const res = await request(app.getHttpServer()).post('/api/v1/auth/driver/login').send({ phone, password }).expect(201);
     return res.body.accessToken;
   }
 
@@ -71,6 +78,14 @@ describe('Sécurité — bout en bout (section 18)', () => {
     it('401 avec un token invalide/mal formé', async () => {
       await request(app.getHttpServer()).get('/api/v1/reports/missions').set('Authorization', 'Bearer not-a-real-jwt').expect(401);
     });
+
+    it("410 Gone : l'OTP n'est plus un moyen de connexion (connexion par mot de passe requise)", async () => {
+      await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({ phone: randomPhone() }).expect(410);
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/otp/verify')
+        .send({ phone: randomPhone(), code: '123456' })
+        .expect(410);
+    });
   });
 
   describe('Validation des entrées — rejette les payloads malformés (400)', () => {
@@ -79,7 +94,9 @@ describe('Sécurité — bout en bout (section 18)', () => {
     });
 
     it('400 : champ requis manquant', async () => {
-      await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({}).expect(400);
+      // Mode SIGN_UP sans identifiant : la validation DTO passe (champs optionnels),
+      // le service rejette l'identifiant manquant (l'OTP LOGIN répond 410, voir test dédié).
+      await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({ mode: 'SIGN_UP' }).expect(400);
     });
 
     it('400 : champ non attendu rejeté (whitelist/forbidNonWhitelisted)', async () => {
@@ -99,15 +116,15 @@ describe('Sécurité — bout en bout (section 18)', () => {
 
   describe('Rate limiting — ThrottlerGuard réellement appliqué (pas seulement configuré)', () => {
     it(
-      "renvoie 429 au-delà de la limite globale sur un endpoint public (otp/request)",
+      "renvoie 429 au-delà de la limite globale sur un endpoint public (health)",
       async () => {
         const server = app.getHttpServer();
         let sawTooManyRequests = false;
         // Limite globale configurée dans CommonModule : 100 req / 60s. On en envoie volontairement
-        // plus pour observer le 429 — un numéro différent à chaque appel pour ne pas se heurter
-        // d'abord au cooldown métier (400) qui masquerait le comportement du guard.
+        // plus pour observer le 429. GET /health est volontairement choisi plutôt qu'un endpoint
+        // OTP : il traverse le même ThrottlerGuard global sans coûter un hash argon2 par appel.
         for (let i = 0; i < 110 && !sawTooManyRequests; i++) {
-          const res = await request(server).post('/api/v1/auth/otp/request').send({ phone: randomPhone() });
+          const res = await request(server).get('/health');
           if (res.status === 429) sawTooManyRequests = true;
         }
         expect(sawTooManyRequests).toBe(true);

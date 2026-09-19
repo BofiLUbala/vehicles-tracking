@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
-import { AppTheme } from '../src/theme/colors';
+import { AppRadius, AppTheme } from '../src/theme/colors';
 
 export default function SplashScreen() {
   const { status } = useAuth();
@@ -22,9 +22,10 @@ export default function SplashScreen() {
     <View style={styles.container}>
       <View style={styles.logoContainer}>
         <Text style={styles.appName}>TRACKING VEHICLES</Text>
+        <View style={styles.accentBar} />
         <Text style={styles.appSubtitle}>Application Chauffeur</Text>
       </View>
-      <ActivityIndicator size="large" color={AppTheme.primary} style={styles.loader} />
+      <ActivityIndicator size="large" color={AppTheme.surface} style={styles.loader} />
     </View>
   );
 }
@@ -32,7 +33,7 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A', // Slate 900
+    backgroundColor: AppTheme.navy,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -44,13 +45,20 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 26,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: AppTheme.surface,
     letterSpacing: 2,
-    marginBottom: 8,
+    marginBottom: 10,
+  },
+  accentBar: {
+    width: 44,
+    height: 4,
+    borderRadius: AppRadius.pill,
+    backgroundColor: AppTheme.tracking,
+    marginBottom: 10,
   },
   appSubtitle: {
     fontSize: 16,
-    color: '#94A3B8',
+    color: AppTheme.textMuted,
     fontWeight: '500',
     letterSpacing: 0.5,
   },

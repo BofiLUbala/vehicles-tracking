@@ -81,6 +81,9 @@ export class TrackingService {
       if (!mission || mission.driverId !== driverId || mission.vehicleId !== vehicleId) {
         throw wrongDriverPositionError("Cette mission n'est pas affectée à ce chauffeur/véhicule");
       }
+      if (mission.status !== MissionStatus.STARTED && mission.status !== MissionStatus.IN_PROGRESS) {
+        throw wrongDriverPositionError("Cette mission n'est pas active (statut: " + mission.status + ")");
+      }
     }
   }
 
@@ -130,6 +133,7 @@ export class TrackingService {
         vehicleId: dto.vehicleId,
         latitude: dto.latitude,
         longitude: dto.longitude,
+        accuracy: dto.accuracy,
         speed: dto.speed,
         heading: dto.heading,
         status: vehicle?.status ?? 'AVAILABLE',
@@ -137,6 +141,7 @@ export class TrackingService {
       update: {
         latitude: dto.latitude,
         longitude: dto.longitude,
+        accuracy: dto.accuracy,
         speed: dto.speed,
         heading: dto.heading,
         status: vehicle?.status ?? 'AVAILABLE',
@@ -149,6 +154,7 @@ export class TrackingService {
       missionId: dto.missionId,
       latitude: dto.latitude,
       longitude: dto.longitude,
+      accuracy: dto.accuracy,
       speed: dto.speed,
       heading: dto.heading,
       recordedAt: recordedAt.toISOString(),
@@ -252,6 +258,21 @@ export class TrackingService {
       }
     }
 
+    // Statut "live" dérivé (MOVING/STOPPED/ON_MISSION/OFFLINE/SUSPICIOUS) — les alertes ci-dessus
+    // ayant déjà été écrites, une alerte MOCK_GPS/SPEEDING récente rend bien le véhicule SUSPICIOUS.
+    // Diffusé sur `vehicle.status.updated` pour que l'écran admin mette à jour le statut du marqueur
+    // sans dépendre d'un refetch de `GET /tracking/vehicles/live`.
+    const liveStatus = await this.deriveVehicleStatus(dto.vehicleId, {
+      latitude: dto.latitude,
+      speed: dto.speed ?? null,
+      updatedAt: new Date(),
+    });
+    this.realtime.emitVehicleStatusUpdated({
+      organizationId,
+      vehicleId: dto.vehicleId,
+      status: liveStatus,
+    });
+
     return { position, duplicate: false };
   }
 
@@ -338,14 +359,20 @@ export class TrackingService {
     return Promise.all(
       vehicles.map(async (vehicle) => {
         const status = await this.deriveVehicleStatus(vehicle.id, vehicle.latestPosition);
+        const activeMission = await this.prisma.mission.findFirst({
+          where: { vehicleId: vehicle.id, status: { in: [MissionStatus.STARTED, MissionStatus.IN_PROGRESS] } },
+          select: { id: true },
+        });
         return {
           vehicleId: vehicle.id,
           plateNumber: vehicle.plateNumber,
           status,
+          activeMissionId: activeMission?.id ?? null,
           latestPosition: vehicle.latestPosition
             ? {
                 latitude: vehicle.latestPosition.latitude,
                 longitude: vehicle.latestPosition.longitude,
+                accuracy: vehicle.latestPosition.accuracy,
                 speed: vehicle.latestPosition.speed,
                 heading: vehicle.latestPosition.heading,
                 updatedAt: vehicle.latestPosition.updatedAt,
@@ -384,12 +411,59 @@ export class TrackingService {
     return this.toGeoJsonTrace(vehicleId, null, positions);
   }
 
-  /** `GET /tracking/missions/:id/trace` — trace brute, non modifiée, ordre chronologique. */
+  /** `GET /tracking/missions/:id/trace` — trace complète d'une mission avec métadonnées et positions. */
   async missionTrace(organizationId: string, missionId: string) {
     const mission = await this.prisma.mission.findFirst({ where: { id: missionId, organizationId } });
     if (!mission) throw new NotFoundException('Mission introuvable');
+    return this.buildMissionTrace(mission);
+  }
 
-    const positions = await this.prisma.gpsPosition.findMany({ where: { missionId }, orderBy: { recordedAt: 'asc' } });
-    return this.toGeoJsonTrace(mission.vehicleId, missionId, positions);
+  /**
+   * `GET /mobile/missions/:id/trace` — même trace, mais scopée au chauffeur appelant : seules les
+   * missions qui lui sont affectées sont accessibles (protection IDOR, le JWT fait foi).
+   */
+  async missionTraceForDriver(driverId: string, missionId: string) {
+    const mission = await this.prisma.mission.findFirst({ where: { id: missionId, driverId } });
+    if (!mission) throw new NotFoundException('Mission introuvable');
+    return this.buildMissionTrace(mission);
+  }
+
+  private async buildMissionTrace(mission: { id: string; vehicleId: string; driverId: string; status: MissionStatus; actualStart: Date | null }) {
+    const missionId = mission.id;
+    const positions = await this.prisma.gpsPosition.findMany({
+      where: { missionId },
+      orderBy: { recordedAt: 'asc' },
+      select: {
+        latitude: true,
+        longitude: true,
+        accuracy: true,
+        speed: true,
+        heading: true,
+        recordedAt: true,
+      },
+    });
+
+    let totalDistanceMeters = 0;
+    for (let i = 1; i < positions.length; i++) {
+      totalDistanceMeters += haversineDistanceMeters(
+        positions[i - 1].latitude,
+        positions[i - 1].longitude,
+        positions[i].latitude,
+        positions[i].longitude,
+      );
+    }
+
+    return {
+      missionId: mission.id,
+      vehicleId: mission.vehicleId,
+      driverId: mission.driverId,
+      status: mission.status,
+      startedAt: mission.actualStart?.toISOString() ?? null,
+      lastPositionAt: positions.length > 0 ? positions[positions.length - 1].recordedAt.toISOString() : null,
+      totalPoints: positions.length,
+      totalDistanceMeters: Math.round(totalDistanceMeters),
+      geojson: this.toGeoJsonTrace(mission.vehicleId, missionId, positions),
+      positions,
+    };
   }
 }

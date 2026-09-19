@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,13 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Camera, Check, RotateCcw, X } from 'lucide-react-native';
 import { TrackingService } from '../../../../../../src/services/tracking.service';
 import { ValidationApi } from '../../../../../../src/api/validation.api';
 import { ValidationQueueRepository } from '../../../../../../src/database/validation-queue.repository';
 import { BigButton } from '../../../../../../src/components/BigButton';
-import { AppTheme } from '../../../../../../src/theme/colors';
+import { OfflineBanner } from '../../../../../../src/components/OfflineBanner';
+import { AppTheme, AppRadius, AppShadow, AppSpacing } from '../../../../../../src/theme/colors';
 
 export default function PhotoCaptureScreen() {
   const { id: missionId, stepId, qrToken } = useLocalSearchParams<{
@@ -24,13 +26,21 @@ export default function PhotoCaptureScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const cameraRef = useRef<CameraView>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    setPendingCount(ValidationQueueRepository.getPendingCount());
+  }, [photoUri]);
 
   if (!permission?.granted) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.permissionCard}>
+          <View style={styles.permissionIcon}>
+            <Camera size={32} color={AppTheme.primary} />
+          </View>
           <Text style={styles.permissionTitle}>Caméra requise</Text>
           <Text style={styles.permissionSubtitle}>
             L&apos;appareil photo est nécessaire pour photographier la preuve de collecte ou de dépôt.
@@ -87,8 +97,8 @@ export default function PhotoCaptureScreen() {
 
       if (result.success) {
         router.replace({
-          pathname: `/(main)/missions/${missionId}/steps/${stepId}/result`,
-          params: { success: 'true' },
+          pathname: '/(main)/missions/[id]/steps/[stepId]/result',
+          params: { id: missionId, stepId, success: 'true' },
         });
       } else if (result.queued) {
         // Enqueue offline in SQLite
@@ -105,13 +115,15 @@ export default function PhotoCaptureScreen() {
         });
 
         router.replace({
-          pathname: `/(main)/missions/${missionId}/steps/${stepId}/result`,
-          params: { queued: 'true' },
+          pathname: '/(main)/missions/[id]/steps/[stepId]/result',
+          params: { id: missionId, stepId, queued: 'true' },
         });
       } else {
         router.replace({
-          pathname: `/(main)/missions/${missionId}/steps/${stepId}/result`,
+          pathname: '/(main)/missions/[id]/steps/[stepId]/result',
           params: {
+            id: missionId,
+            stepId,
             success: 'false',
             errorCode: result.errorCode || 'UNKNOWN',
             message: result.message || 'Validation refusée.',
@@ -137,19 +149,23 @@ export default function PhotoCaptureScreen() {
             onPress={() => (photoUri ? setPhotoUri(null) : router.back())}
             style={styles.actionPill}
           >
-            <Text style={styles.actionPillText}>{photoUri ? '← Reprendre' : '✕ Annuler'}</Text>
+            {photoUri ? <RotateCcw size={14} color="#FFFFFF" /> : <X size={16} color="#FFFFFF" />}
+            <Text style={styles.actionPillText}>{photoUri ? 'Reprendre' : 'Annuler'}</Text>
           </TouchableOpacity>
           <Text style={styles.topTitle}>{photoUri ? 'Confirmer la photo' : 'Preuve photo'}</Text>
           <View style={{ width: 80 }} />
         </View>
 
+        {pendingCount > 0 && photoUri && <OfflineBanner pendingCount={pendingCount} />}
+
         <View style={styles.bottomBar}>
           {photoUri ? (
             <BigButton
               label="Valider cette étape"
+              variant="success"
               isLoading={isValidating}
+              icon={<Check size={20} color="#FFFFFF" />}
               onPressed={handleValidateStep}
-              style={styles.validateBtn}
             />
           ) : (
             <View style={styles.captureContainer}>
@@ -178,27 +194,40 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
     justifyContent: 'center',
-    padding: 24,
+    padding: AppSpacing.xxl,
   },
   permissionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: AppSpacing.xxl,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    ...AppShadow.card,
+  },
+  permissionIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: AppRadius.pill,
+    backgroundColor: AppTheme.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: AppSpacing.lg,
   },
   permissionTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: AppTheme.text,
-    marginBottom: 8,
+    marginBottom: AppSpacing.sm,
   },
   permissionSubtitle: {
     fontSize: 14,
     color: AppTheme.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: AppSpacing.xxl,
+    lineHeight: 20,
   },
   overlay: {
     flex: 1,
@@ -208,19 +237,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: AppSpacing.xl,
     paddingTop: 10,
   },
   actionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: AppRadius.pill,
   },
   actionPillText: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+    marginLeft: 6,
   },
   topTitle: {
     color: '#FFFFFF',
@@ -228,7 +260,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
   bottomBar: {
-    padding: 24,
+    padding: AppSpacing.xxl,
     paddingBottom: 32,
   },
   captureContainer: {
@@ -242,6 +274,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.7)',
   },
   captureInner: {
     width: 64,
@@ -257,8 +291,5 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
-  },
-  validateBtn: {
-    backgroundColor: AppTheme.success,
   },
 });

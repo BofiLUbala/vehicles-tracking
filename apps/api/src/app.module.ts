@@ -22,6 +22,7 @@ import { TrackingModule } from './tracking/tracking.module';
 import { FuelModule } from './fuel/fuel.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ReportsModule } from './reports/reports.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ReportsModule } from './reports/reports.module';
     FuelModule,
     AlertsModule,
     ReportsModule,
+    AuditModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSync } from '../context/SyncContext';
-import { AppTheme } from '../theme/colors';
+import { AppRadius, AppTheme } from '../theme/colors';
 import { useRouter } from 'expo-router';
 
 export const ConnectivityPill: React.FC = () => {
@@ -23,8 +23,8 @@ export const ConnectivityPill: React.FC = () => {
     if (isSyncing) {
       return {
         text: 'Synchronisation en cours…',
-        bg: AppTheme.primaryLight,
-        color: AppTheme.primary,
+        bg: AppTheme.infoLight,
+        color: AppTheme.info,
       };
     }
     return {
@@ -40,7 +40,7 @@ export const ConnectivityPill: React.FC = () => {
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={() => router.push('/(main)/sync')}
-      style={[styles.pill, { backgroundColor: data.bg }]}
+      style={[styles.pill, { backgroundColor: data.bg, borderColor: `${data.color}30` }]}
     >
       <View style={[styles.dot, { backgroundColor: data.color }]} />
       <Text style={[styles.text, { color: data.color }]}>{data.text}</Text>
@@ -52,9 +52,10 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: AppRadius.pill,
+    borderWidth: 1,
     marginHorizontal: 16,
     marginVertical: 6,
     alignSelf: 'center',
@@ -63,7 +64,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 6,
+    marginRight: 7,
   },
   text: {
     fontSize: 12,

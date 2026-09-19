@@ -9,8 +9,9 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { ArrowLeft, ArrowRight, Camera, X } from 'lucide-react-native';
 import { BigButton } from '../../../../src/components/BigButton';
-import { AppTheme } from '../../../../src/theme/colors';
+import { AppRadius, AppShadow, AppTheme } from '../../../../src/theme/colors';
 
 export default function FuelReceiptPhotoScreen() {
   const params = useLocalSearchParams<{
@@ -31,6 +32,9 @@ export default function FuelReceiptPhotoScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.permissionCard}>
+          <View style={styles.permissionIcon}>
+            <Camera size={24} color={AppTheme.primary} />
+          </View>
           <Text style={styles.permissionTitle}>Caméra requise</Text>
           <Text style={styles.permissionSubtitle}>
             L&apos;appareil photo est nécessaire pour photographier le reçu de la station-service.
@@ -59,9 +63,10 @@ export default function FuelReceiptPhotoScreen() {
   const handleNext = () => {
     if (!photoUri) return;
     router.push({
-      pathname: `/(main)/fuel/${params.vehicleId}/odometer-photo`,
+      pathname: '/(main)/fuel/[vehicleId]/odometer-photo',
       params: {
         ...params,
+        vehicleId: params.vehicleId,
         receiptPhotoUri: photoUri,
       },
     });
@@ -81,16 +86,25 @@ export default function FuelReceiptPhotoScreen() {
             onPress={() => (photoUri ? setPhotoUri(null) : router.back())}
             style={styles.actionPill}
           >
-            <Text style={styles.actionPillText}>{photoUri ? '← Reprendre' : '✕ Annuler'}</Text>
+            {photoUri ? (
+              <ArrowLeft size={15} color="#FFFFFF" />
+            ) : (
+              <X size={15} color="#FFFFFF" />
+            )}
+            <Text style={styles.actionPillText}>{photoUri ? 'Reprendre' : 'Annuler'}</Text>
           </TouchableOpacity>
-          <Text style={styles.topTitle}>1/2 Photo du Reçu</Text>
-          <View style={{ width: 80 }} />
+          <View style={styles.stepPill}>
+            <Camera size={13} color="#FFFFFF" />
+            <Text style={styles.topTitle}>1/2 Photo du Reçu</Text>
+          </View>
+          <View style={styles.topSpacer} />
         </View>
 
         <View style={styles.bottomBar}>
           {photoUri ? (
             <BigButton
-              label="Continuer vers le compteur →"
+              label="Continuer vers le compteur"
+              icon={<ArrowRight size={20} color="#FFFFFF" />}
               onPressed={handleNext}
               style={styles.continueBtn}
             />
@@ -121,15 +135,27 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
     justifyContent: 'center',
     padding: 24,
   },
   permissionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
     padding: 24,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    ...AppShadow.card,
+  },
+  permissionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: AppRadius.md,
+    backgroundColor: AppTheme.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   permissionTitle: {
     fontSize: 20,
@@ -142,6 +168,7 @@ const styles = StyleSheet.create({
     color: AppTheme.textSecondary,
     textAlign: 'center',
     marginBottom: 24,
+    lineHeight: 20,
   },
   overlay: {
     flex: 1,
@@ -155,20 +182,35 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   actionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: AppRadius.pill,
   },
   actionPillText: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+    marginLeft: 6,
+  },
+  stepPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: AppRadius.pill,
   },
   topTitle: {
     color: '#FFFFFF',
     fontWeight: '800',
-    fontSize: 16,
+    fontSize: 13,
+    marginLeft: 6,
+  },
+  topSpacer: {
+    width: 84,
   },
   bottomBar: {
     padding: 24,
@@ -182,9 +224,11 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     backgroundColor: 'rgba(255,255,255,0.3)',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   captureInner: {
     width: 64,

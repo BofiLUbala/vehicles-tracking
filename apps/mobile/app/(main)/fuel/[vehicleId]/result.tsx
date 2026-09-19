@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { AlertTriangle, CheckCircle2, CloudOff, XCircle } from 'lucide-react-native';
 import { BigButton } from '../../../../src/components/BigButton';
 import { frenchMessageForFuelErrorCode } from '../../../../src/utils/error-messages';
-import { AppTheme } from '../../../../src/theme/colors';
+import { AppRadius, AppShadow, AppTheme } from '../../../../src/theme/colors';
 
 export default function FuelResultScreen() {
   const {
@@ -34,38 +35,49 @@ export default function FuelResultScreen() {
     ? "Pas de réseau : la déclaration et les photos sont enregistrées sur l'appareil et seront envoyées automatiquement dès le retour de la connexion."
     : frenchMessageForFuelErrorCode(errorCode, message);
 
+  const iconColor = isSuccess
+    ? hasAnomalies
+      ? AppTheme.warning
+      : AppTheme.success
+    : isQueued
+    ? AppTheme.primary
+    : AppTheme.danger;
+
+  const iconBg = isSuccess
+    ? hasAnomalies
+      ? AppTheme.warningLight
+      : AppTheme.successLight
+    : isQueued
+    ? AppTheme.primaryLight
+    : AppTheme.dangerLight;
+
+  const ResultIcon = isSuccess
+    ? hasAnomalies
+      ? AlertTriangle
+      : CheckCircle2
+    : isQueued
+    ? CloudOff
+    : XCircle;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.resultCard}>
-          <View
-            style={[
-              styles.iconWrapper,
-              {
-                backgroundColor: isSuccess
-                  ? hasAnomalies
-                    ? AppTheme.warningLight
-                    : AppTheme.successLight
-                  : isQueued
-                  ? AppTheme.primaryLight
-                  : AppTheme.dangerLight,
-              },
-            ]}
-          >
-            <Text style={styles.resultIcon}>
-              {isSuccess ? (hasAnomalies ? '⚠️' : '✓') : isQueued ? '☁' : '✕'}
-            </Text>
+          <View style={[styles.iconWrapper, { backgroundColor: iconBg }]}>
+            <ResultIcon size={44} color={iconColor} strokeWidth={2.2} />
           </View>
 
-          <Text style={styles.resultTitle}>
-            {isSuccess
-              ? 'Déclaration enregistrée'
-              : isQueued
-              ? 'Enregistré hors-ligne'
-              : 'Déclaration refusée'}
-          </Text>
+          <View style={styles.messageCard}>
+            <Text style={styles.resultTitle}>
+              {isSuccess
+                ? 'Déclaration enregistrée'
+                : isQueued
+                ? 'Enregistré hors-ligne'
+                : 'Déclaration refusée'}
+            </Text>
 
-          <Text style={styles.resultDesc}>{displayMessage}</Text>
+            <Text style={styles.resultDesc}>{displayMessage}</Text>
+          </View>
         </View>
 
         <View style={styles.actions}>
@@ -82,7 +94,7 @@ export default function FuelResultScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
   container: {
     flex: 1,
@@ -93,7 +105,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
   },
   iconWrapper: {
     width: 96,
@@ -103,9 +115,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  resultIcon: {
-    fontSize: 44,
-    fontWeight: '900',
+  messageCard: {
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    padding: 24,
+    alignItems: 'center',
+    width: '100%',
+    ...AppShadow.card,
   },
   resultTitle: {
     fontSize: 24,

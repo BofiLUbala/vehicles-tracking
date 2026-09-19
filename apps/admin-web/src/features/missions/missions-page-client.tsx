@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/empty-state';
 import { MissionForm } from '@/features/missions/mission-form';
 import { MissionsFiltersBar } from '@/features/missions/missions-filters';
 import { MissionsTable } from '@/features/missions/missions-table';
@@ -55,16 +57,25 @@ export function MissionsPageClient() {
   const vehiclesById = Object.fromEntries((vehiclesQuery.data ?? []).map((v) => [v.id, v]));
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Missions</h1>
-        {!showCreateForm && <Button type="button" onClick={() => setShowCreateForm(true)}>Nouvelle mission</Button>}
+    <div className="flex flex-col gap-5 p-6 lg:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight">Missions</h1>
+          <p className="text-sm text-muted-foreground">
+            Planifiez, assignez et suivez les tournées de votre flotte.
+          </p>
+        </div>
+        {!showCreateForm && (
+          <Button type="button" onClick={() => setShowCreateForm(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Nouvelle mission
+          </Button>
+        )}
       </div>
 
       {showCreateForm && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Nouvelle mission</CardTitle>
+            <CardTitle className="text-base font-semibold">Nouvelle mission</CardTitle>
           </CardHeader>
           <CardContent>
             <MissionForm
@@ -76,20 +87,21 @@ export function MissionsPageClient() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Filtres</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <MissionsFiltersBar filters={filters} onChange={setFilters} />
-        </CardContent>
-      </Card>
+      <MissionsFiltersBar filters={filters} onChange={setFilters} />
 
       <Card>
         <CardContent className="p-0">
-          {isLoading && <p className="p-4 text-sm text-muted-foreground">Chargement des missions…</p>}
-          {isError && <p className="p-4 text-sm text-destructive">Impossible de charger les missions.</p>}
-          {data && <MissionsTable missions={data} driversById={driversById} vehiclesById={vehiclesById} />}
+          {isLoading && <LoadingSkeleton className="h-64 rounded-b-xl" />}
+          {isError && (
+            <ErrorState message="Impossible de charger les missions" className="h-64 rounded-b-xl" />
+          )}
+          {data && (
+            <MissionsTable
+              missions={data}
+              driversById={driversById}
+              vehiclesById={vehiclesById}
+            />
+          )}
         </CardContent>
       </Card>
     </div>

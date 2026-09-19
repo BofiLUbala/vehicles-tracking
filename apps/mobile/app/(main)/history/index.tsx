@@ -9,27 +9,35 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { ArrowLeft, CheckCircle2, ClipboardList, ChevronRight } from 'lucide-react-native';
 import { MissionsApi } from '../../../src/api/missions.api';
 import { MissionsCacheRepository } from '../../../src/database/missions-cache.repository';
 import { Mission } from '../../../src/types/mission.types';
 import { StatusBadge } from '../../../src/components/StatusBadge';
 import { LoadingView } from '../../../src/components/LoadingView';
-import { AppTheme } from '../../../src/theme/colors';
+import { ErrorView } from '../../../src/components/ErrorView';
+import { AppRadius, AppShadow, AppSpacing, AppTheme } from '../../../src/theme/colors';
 
 export default function HistoryScreen() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const loadHistory = useCallback(async (showLoader = true) => {
     if (showLoader) setIsLoading(true);
+    setError(null);
     try {
       const data = await MissionsApi.getTodayMissions();
       setMissions(data);
     } catch {
       const cached = MissionsCacheRepository.get();
-      if (cached) setMissions(cached);
+      if (cached && cached.length > 0) {
+        setMissions(cached);
+      } else {
+        setError('Impossible de charger l’historique. Vérifiez votre connexion puis réessayez.');
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -53,14 +61,16 @@ export default function HistoryScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Retour</Text>
+          <ArrowLeft size={20} color={AppTheme.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Historique du jour</Text>
-        <View style={{ width: 60 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
       {isLoading ? (
         <LoadingView message="Chargement de l'historique…" />
+      ) : error ? (
+        <ErrorView message={error} onRetry={() => loadHistory()} />
       ) : (
         <FlatList
           data={completedMissions}
@@ -85,21 +95,29 @@ export default function HistoryScreen() {
                   <Text style={styles.missionNumber}>
                     Mission #{item.id.substring(0, 8).toUpperCase()}
                   </Text>
-                  <StatusBadge status={item.status} />
+                  <StatusBadge status={item.status} dot />
                 </View>
 
                 <Text style={styles.cardSubtitle}>
                   Véhicule : {item.vehiclePlateNumber || item.vehicleId.substring(0, 8)}
                 </Text>
-                <Text style={styles.stepsText}>
-                  {completedCount} / {item.steps.length} étape(s) validée(s)
-                </Text>
+                <View style={styles.stepsRow}>
+                  <CheckCircle2 size={14} color={AppTheme.success} />
+                  <Text style={styles.stepsText}>
+                    <Text style={styles.stepsCount}>{completedCount}</Text> / {item.steps.length} étape(s) validée(s)
+                  </Text>
+                  <View style={styles.chevron}>
+                    <ChevronRight size={16} color={AppTheme.textMuted} />
+                  </View>
+                </View>
               </TouchableOpacity>
             );
           }}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>📋</Text>
+              <View style={styles.emptyIconWrap}>
+                <ClipboardList size={28} color={AppTheme.primary} />
+              </View>
               <Text style={styles.emptyTitle}>Aucune mission terminée</Text>
               <Text style={styles.emptySubtitle}>
                 Les missions que vous aurez terminées aujourd&apos;hui apparaîtront ici.
@@ -115,49 +133,52 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: AppSpacing.xl,
+    paddingVertical: AppSpacing.md,
+    backgroundColor: AppTheme.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: AppTheme.border,
   },
   backBtn: {
-    paddingVertical: 4,
-    paddingRight: 8,
+    width: 36,
+    height: 36,
+    borderRadius: AppRadius.pill,
+    backgroundColor: AppTheme.subtle,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  backText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: AppTheme.primary,
+  headerSpacer: {
+    width: 36,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '800',
     color: AppTheme.text,
   },
   listContent: {
-    padding: 16,
+    padding: AppSpacing.lg,
     flexGrow: 1,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: AppSpacing.lg,
+    marginBottom: AppSpacing.md,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: AppTheme.border,
+    ...AppShadow.card,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: AppSpacing.sm,
   },
   missionNumber: {
     fontSize: 16,
@@ -167,12 +188,27 @@ const styles = StyleSheet.create({
   cardSubtitle: {
     fontSize: 13,
     color: AppTheme.textSecondary,
-    marginBottom: 4,
+    marginBottom: AppSpacing.sm,
+  },
+  stepsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: AppSpacing.xs,
   },
   stepsText: {
     fontSize: 13,
+    fontWeight: '600',
+    color: AppTheme.textSecondary,
+    marginLeft: 6,
+    flex: 1,
+  },
+  stepsCount: {
     fontWeight: '700',
-    color: AppTheme.primary,
+    color: AppTheme.success,
+    fontVariant: ['tabular-nums'],
+  },
+  chevron: {
+    marginLeft: 8,
   },
   emptyContainer: {
     flex: 1,
@@ -180,9 +216,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 80,
   },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 14,
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: AppTheme.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: AppSpacing.lg,
   },
   emptyTitle: {
     fontSize: 18,

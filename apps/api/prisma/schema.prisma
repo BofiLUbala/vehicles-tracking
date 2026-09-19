@@ -47,6 +47,7 @@ enum OtpPurpose {
 }
 
 enum DriverStatus {
+  PENDING_VERIFICATION
   ACTIVE
   SUSPENDED
   UNAVAILABLE
@@ -190,7 +191,6 @@ model User {
   role         Role          @relation(fields: [roleId], references: [id])
   sessions     UserSession[]
   devices      Device[]
-  auditLogs    AuditLog[]
   notifications Notification[]
 
   @@index([organizationId])
@@ -305,7 +305,9 @@ model Driver {
   organizationId String
   firstName      String
   lastName       String
-  phone          String       @unique
+  phone          String?      @unique
+  email          String?      @unique
+  passwordHash   String?
   licenseNumber  String?
   status         DriverStatus @default(ACTIVE)
   createdAt      DateTime     @default(now())
@@ -558,6 +560,7 @@ model GpsPosition {
   @@index([vehicleId])
   @@index([missionId])
   @@index([recordedAt])
+  @@index([missionId, recordedAt])
   @@map("gps_positions")
 }
 
@@ -566,6 +569,9 @@ model VehicleLatestPosition {
   vehicleId String        @id
   latitude  Float
   longitude Float
+  // Précision GPS (mètres) de la dernière position connue — remontée à GET /tracking/vehicles/live
+  // et à GET /tracking/vehicles/:id/latest pour l'affichage de la tuile "Précision GPS" du panneau admin.
+  accuracy  Float?
   speed     Float?
   heading   Float?
   status    VehicleStatus
@@ -690,8 +696,6 @@ model AuditLog {
   // redigées avant écriture ici — voir common/audit-log helper.
   metadata  Json?
   createdAt DateTime @default(now())
-
-  actor User? @relation(fields: [actorId], references: [id])
 
   @@index([actorId])
   @@index([entity, entityId])

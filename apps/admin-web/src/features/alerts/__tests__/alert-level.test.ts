@@ -12,9 +12,9 @@ describe('alertLevelToClass', () => {
 
   it('maps LOW/MEDIUM to non-red (info/warning) tones and HIGH/CRITICAL to red (critical) tones', () => {
     expect(alertLevelToClass('LOW')).not.toMatch(/red/);
-    expect(alertLevelToClass('MEDIUM')).toMatch(/orange/);
-    expect(alertLevelToClass('HIGH')).toMatch(/red/);
-    expect(alertLevelToClass('CRITICAL')).toMatch(/red/);
+    expect(alertLevelToClass('MEDIUM')).toMatch(/warning/);
+    expect(alertLevelToClass('HIGH')).toMatch(/danger/);
+    expect(alertLevelToClass('CRITICAL')).toMatch(/danger/);
   });
 
   it('falls back to a default class for an unknown level (defensive)', () => {

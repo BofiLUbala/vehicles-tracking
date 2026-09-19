@@ -2,6 +2,7 @@ import { Controller, Get, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleName } from '@prisma/client';
 import { MissionsService } from './missions.service';
+import { TrackingService } from '../tracking/tracking.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentDriver, AuthenticatedPrincipal } from '../common/decorators/current-user.decorator';
 
@@ -13,7 +14,10 @@ import { CurrentDriver, AuthenticatedPrincipal } from '../common/decorators/curr
 @ApiBearerAuth()
 @Controller('mobile/missions')
 export class MobileMissionsController {
-  constructor(private readonly missions: MissionsService) {}
+  constructor(
+    private readonly missions: MissionsService,
+    private readonly tracking: TrackingService,
+  ) {}
 
   @Roles(RoleName.DRIVER)
   @Get('today')
@@ -27,5 +31,12 @@ export class MobileMissionsController {
   @ApiOperation({ summary: 'Détail d\'une mission du chauffeur connecté (403 si non affectée)' })
   findOne(@CurrentDriver() driver: AuthenticatedPrincipal, @Param('id') id: string) {
     return this.missions.findOneForDriver(driver.sub, id);
+  }
+
+  @Roles(RoleName.DRIVER)
+  @Get(':id/trace')
+  @ApiOperation({ summary: 'Trace GPS d\'une mission du chauffeur connecté (restauration du trajet)' })
+  trace(@CurrentDriver() driver: AuthenticatedPrincipal, @Param('id') id: string) {
+    return this.tracking.missionTraceForDriver(driver.sub, id);
   }
 }

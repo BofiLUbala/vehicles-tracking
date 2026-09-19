@@ -1,18 +1,30 @@
 import { apiClient } from './client';
-import { AuthSession, Driver, VerifyOtpDto } from '../types/auth.types';
+import {
+  AuthSession,
+  Driver,
+  DriverLoginDto,
+  RequestOtpDto,
+  RequestPasswordResetDto,
+  ResendOtpDto,
+  VerifyOtpDto,
+  VerifyPasswordResetDto,
+} from '../types/auth.types';
 
 export const AuthApi = {
-  async requestOtp(phone: string, channel: 'WHATSAPP' | 'EMAIL' = 'WHATSAPP'): Promise<void> {
-    await apiClient.post('/auth/otp/request', {
-      phone,
-      channel,
-    });
+  async requestOtp(payload: RequestOtpDto | string, channel?: 'WHATSAPP' | 'EMAIL'): Promise<void> {
+    const body: RequestOtpDto =
+      typeof payload === 'string'
+        ? { phone: payload, channel: channel ?? 'WHATSAPP' }
+        : payload;
+    await apiClient.post('/auth/otp/request', body);
   },
 
-  async resendOtp(phone: string): Promise<void> {
-    await apiClient.post('/auth/otp/resend', {
-      phone,
-    });
+  async resendOtp(payload: ResendOtpDto | string, channel?: 'WHATSAPP' | 'EMAIL'): Promise<void> {
+    const body: ResendOtpDto =
+      typeof payload === 'string'
+        ? { phone: payload, channel: channel ?? 'WHATSAPP' }
+        : payload;
+    await apiClient.post('/auth/otp/resend', body);
   },
 
   async verifyOtp(dto: VerifyOtpDto): Promise<AuthSession> {
@@ -21,6 +33,25 @@ export const AuthApi = {
       refreshToken: string;
       driver: Driver;
     }>('/auth/otp/verify', dto);
+    return response.data;
+  },
+
+  /** Connexion chauffeur par identifiant + mot de passe (sans OTP). */
+  async driverLogin(dto: DriverLoginDto): Promise<AuthSession> {
+    const response = await apiClient.post<{
+      accessToken: string;
+      refreshToken: string;
+      driver: Driver;
+    }>('/auth/driver/login', dto);
+    return response.data;
+  },
+
+  async requestPasswordReset(payload: RequestPasswordResetDto): Promise<void> {
+    await apiClient.post('/auth/password-reset/request', payload);
+  },
+
+  async verifyPasswordReset(payload: VerifyPasswordResetDto): Promise<{ message: string }> {
+    const response = await apiClient.post<{ message: string }>('/auth/password-reset/verify', payload);
     return response.data;
   },
 

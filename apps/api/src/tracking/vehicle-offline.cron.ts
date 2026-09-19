@@ -63,6 +63,13 @@ export class VehicleOfflineCron {
         vehicleId: latest.vehicleId,
         lastSeenAt: updatedAtIso,
       });
+      // Complète le contrat temps réel : le marqueur de l'écran admin passe à OFFLINE dès ce
+      // balayage, sans attendre le prochain refetch du seed de `GET /tracking/vehicles/live`.
+      this.realtime.emitVehicleStatusUpdated({
+        organizationId: latest.vehicle.organizationId,
+        vehicleId: latest.vehicleId,
+        status: 'OFFLINE',
+      });
       this.lastNotifiedOfflineAt.set(latest.vehicleId, updatedAtIso);
       notifiedCount++;
     }

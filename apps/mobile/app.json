@@ -68,8 +68,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "tracking-vehicles-driver"
+        "projectId": "b583be12-e650-4a71-b47c-c0b24ee80e75"
       }
-    }
+    },
+    "owner": "e-attendance"
   }
 }

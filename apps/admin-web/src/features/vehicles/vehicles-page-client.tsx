@@ -3,8 +3,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/empty-state';
 import { AssignDriverDialog } from '@/features/vehicles/assign-driver-dialog';
 import { assignDriverToVehicle, createVehicle, fetchVehicles, updateVehicle } from '@/features/vehicles/api';
 import { VehicleFormDialog } from '@/features/vehicles/vehicle-form-dialog';
@@ -27,9 +29,10 @@ function matchesFilters(vehicle: VehicleDto, filters: VehicleFilters): boolean {
   return true;
 }
 
-export function VehiclesPageClient() {
+/** `initialSearch` : plaque saisie dans le champ global du header (`/vehicles?plate=…`). */
+export function VehiclesPageClient({ initialSearch }: { initialSearch?: string }) {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState<VehicleFilters>({});
+  const [filters, setFilters] = useState<VehicleFilters>(() => (initialSearch ? { search: initialSearch } : {}));
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<VehicleDto | null>(null);
@@ -95,34 +98,36 @@ export function VehiclesPageClient() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Véhicules</h1>
+    <div className="flex flex-col gap-5 p-6 lg:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight">Véhicules</h1>
+          <p className="text-sm text-muted-foreground">
+            Parc roulant de la flotte, affectations et historique.
+          </p>
+        </div>
         <Button
           type="button"
           onClick={() => {
             setEditingVehicle(null);
             setFormOpen(true);
           }}
+          className="gap-2"
         >
-          Nouveau véhicule
+          <Plus className="h-4 w-4" /> Nouveau véhicule
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Filtres</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <VehiclesFiltersBar filters={filters} onChange={setFilters} />
-        </CardContent>
-      </Card>
+      <VehiclesFiltersBar filters={filters} onChange={setFilters} />
 
       <Card>
         <CardContent className="p-0">
-          {isLoading && <p className="p-4 text-sm text-muted-foreground">Chargement des véhicules…</p>}
-          {isError && <p className="p-4 text-sm text-destructive">Impossible de charger les véhicules.</p>}
-          {data && (
+          {isLoading && <LoadingSkeleton className="h-64" />}
+          {isError && <ErrorState message="Impossible de charger les véhicules." />}
+          {data && filteredVehicles.length === 0 && (
+            <EmptyState title="Aucun véhicule" description="Aucun véhicule pour ces filtres." className="py-14" />
+          )}
+          {data && filteredVehicles.length > 0 && (
             <VehiclesTable
               vehicles={filteredVehicles}
               selectedVehicleId={historyVehicle?.id}

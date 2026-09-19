@@ -1,10 +1,3 @@
-export interface LoginResult {
-  requiresOtp: boolean;
-  message?: string;
-  /** Code OTP renvoyé par l'API en développement uniquement (OTP_DEV_EXPOSE_CODE=true). */
-  devCode?: string;
-}
-
 async function parseJsonSafe(res: Response): Promise<Record<string, unknown>> {
   try {
     return await res.json();
@@ -14,7 +7,7 @@ async function parseJsonSafe(res: Response): Promise<Record<string, unknown>> {
 }
 
 /** Passe par la route Next.js (jamais l'API directement) pour que les tokens restent en cookies httpOnly. */
-export async function loginAdmin(email: string, password: string, deviceId: string): Promise<LoginResult> {
+export async function loginAdmin(email: string, password: string, deviceId: string): Promise<void> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -25,14 +18,27 @@ export async function loginAdmin(email: string, password: string, deviceId: stri
   if (!res.ok) {
     throw new Error((data.message as string) ?? 'Identifiants invalides');
   }
-  return data as unknown as LoginResult;
 }
 
-export async function verifyAdminOtp(email: string, code: string, deviceId: string): Promise<void> {
-  const res = await fetch('/api/auth/verify-otp', {
+export async function requestPasswordReset(email: string): Promise<{ message?: string; devCode?: string }> {
+  const res = await fetch('/api/auth/password-reset/request', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, code, deviceId }),
+    body: JSON.stringify({ channel: 'EMAIL', email }),
+    credentials: 'include',
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) {
+    throw new Error((data.message as string) ?? 'Une erreur est survenue');
+  }
+  return data;
+}
+
+export async function verifyPasswordReset(email: string, code: string, newPassword: string): Promise<void> {
+  const res = await fetch('/api/auth/password-reset/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel: 'EMAIL', email, code, newPassword }),
     credentials: 'include',
   });
   const data = await parseJsonSafe(res);

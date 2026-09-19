@@ -9,23 +9,23 @@ const TrackingMap = dynamic(() => import('@/features/tracking/tracking-map').the
 });
 
 export function TrackingMapClient() {
-  const { vehicles, isLoading, isError, connected } = useLiveVehicles();
+  const { vehicles, isLoading, isError, connected, socket } = useLiveVehicles();
 
   if (isLoading) {
     return (
-      <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
-        Chargement des véhicules…
+      <div className="flex h-full w-full animate-pulse items-center justify-center rounded-2xl border border-border bg-card text-sm text-muted-foreground shadow-card">
+        Chargement des véhicules en direct…
       </div>
     );
   }
 
   if (isError) {
     return (
-      <div className="flex h-full w-full items-center justify-center text-sm text-destructive">
+      <div className="flex h-full w-full items-center justify-center rounded-2xl border border-danger/30 bg-danger/5 text-sm text-danger">
         Impossible de charger les véhicules en direct.
       </div>
     );
   }
 
-  return <TrackingMap vehicles={vehicles} connected={connected} />;
+  return <TrackingMap vehicles={vehicles} connected={connected} socket={socket} />;
 }

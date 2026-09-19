@@ -17,6 +17,11 @@ vi.mock('expo-secure-store', () => ({
   deleteItemAsync: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock expo-modules-core (required by expo-secure-store internal imports)
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: vi.fn(() => ({})),
+}));
+
 // Mock expo-location
 vi.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: vi.fn().mockResolvedValue({ granted: true }),

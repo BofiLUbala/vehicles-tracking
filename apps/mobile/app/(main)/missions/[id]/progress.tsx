@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,22 +8,40 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, ScanLine, CheckCircle2, Navigation2 } from 'lucide-react-native';
 import { MissionsApi } from '../../../../src/api/missions.api';
 import { useTracking } from '../../../../src/context/TrackingContext';
-import { Mission, MissionStep } from '../../../../src/types/mission.types';
-import { StatusBadge } from '../../../../src/components/StatusBadge';
+import { useSync } from '../../../../src/context/SyncContext';
+import { useMissionRealtime } from '../../../../src/hooks/useMissionRealtime';
+import { TrackingService } from '../../../../src/services/tracking.service';
+import { GpsQueueRepository } from '../../../../src/database/gps-queue.repository';
+import { Mission } from '../../../../src/types/mission.types';
+import { MissionMap, MissionStop } from '../../../../src/components/MissionMap';
+import { MissionStepCard } from '../../../../src/components/MissionStepCard';
+import { GpsStatusPill } from '../../../../src/components/GpsStatusPill';
+import { SyncStatusPill } from '../../../../src/components/SyncStatusPill';
 import { BigButton } from '../../../../src/components/BigButton';
 import { LoadingView } from '../../../../src/components/LoadingView';
 import { ErrorView } from '../../../../src/components/ErrorView';
-import { AppTheme } from '../../../../src/theme/colors';
+import { AppRadius, AppShadow, AppTheme } from '../../../../src/theme/colors';
+
+const ACTION_LABELS: Record<string, string> = {
+  COLLECT: 'Collecte de déchets',
+  DROPOFF: 'Dépôt au centre de traitement',
+  WEIGH: 'Pesée du camion',
+  REFUEL: 'Ravitaillement',
+  CHECKPOINT: 'Point de contrôle',
+};
 
 export default function MissionProgressScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [mission, setMission] = useState<Mission | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { isTracking, startTracking } = useTracking();
+  const { isTracking, startTracking, currentGps, trace, appendTracePoint, setTraceFromServer } = useTracking();
+  const { isConnected, isSyncing, counts } = useSync();
   const router = useRouter();
+  const listenerRef = useRef<(() => void) | null>(null);
 
   const loadMission = useCallback(async () => {
     if (!id) return;
@@ -33,23 +51,75 @@ export default function MissionProgressScreen() {
       const data = await MissionsApi.getMissionDetail(id);
       setMission(data);
       if (data.status === 'STARTED' || data.status === 'IN_PROGRESS') {
-        startTracking(data.vehicleId, data.id);
+        await startTracking(data.vehicleId, data.id);
+
+        // Restaure le trajet : positions serveur (autre appareil / réinstallation) + file locale
+        // non encore synchronisée, dédupliquées puis ordonnées chronologiquement.
+        const serverTrace = await MissionsApi.getMissionTrace(data.id).catch(() => null);
+        const merged: { latitude: number; longitude: number; recordedAt: string }[] =
+          serverTrace?.positions.map((p) => ({
+            latitude: p.latitude,
+            longitude: p.longitude,
+            recordedAt: p.recordedAt,
+          })) ?? [];
+        const seen = new Set(merged.map((p) => `${p.latitude}|${p.longitude}|${p.recordedAt}`));
+        for (const pos of GpsQueueRepository.getMissionPositions(data.id)) {
+          const key = `${pos.latitude}|${pos.longitude}|${pos.recorded_at}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push({ latitude: pos.latitude, longitude: pos.longitude, recordedAt: pos.recorded_at });
+        }
+        merged.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+        setTraceFromServer(merged);
       }
     } catch {
-      setError('Impossible de rafraîchir la progression.');
+      setError('Impossible d’actualiser la progression.');
     } finally {
       setIsLoading(false);
     }
-  }, [id, startTracking]);
+  }, [id, startTracking, setTraceFromServer]);
+
+  // Rafraîchissement léger (sans redémarrer le suivi) déclenché par les événements temps réel.
+  const refreshMission = useCallback(async () => {
+    if (!id) return;
+    try {
+      const data = await MissionsApi.getMissionDetail(id);
+      setMission(data);
+    } catch {
+      // Événement temps réel : en cas d'échec réseau on garde l'état affiché.
+    }
+  }, [id]);
+
+  useMissionRealtime({
+    missionId: mission?.id ?? id ?? null,
+    vehicleId: mission?.vehicleId ?? null,
+    onMissionEvent: refreshMission,
+  });
 
   useEffect(() => {
     loadMission();
   }, [loadMission]);
 
+  useEffect(() => {
+    if (isTracking) {
+      listenerRef.current = TrackingService.addPositionListener((position) => {
+        appendTracePoint({
+          latitude: position.latitude,
+          longitude: position.longitude,
+          timestamp: position.timestamp,
+        });
+      });
+    }
+    return () => {
+      listenerRef.current?.();
+      listenerRef.current = null;
+    };
+  }, [isTracking, appendTracePoint]);
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <LoadingView message="Chargement de la mission en cours…" />
+        <LoadingView message="Chargement de la mission…" />
       </SafeAreaView>
     );
   }
@@ -67,47 +137,68 @@ export default function MissionProgressScreen() {
   const isAllCompleted = currentStepIndex === -1;
   const currentStep = isAllCompleted ? null : sortedSteps[currentStepIndex];
 
+  const mapStops: MissionStop[] = sortedSteps.map((step) => ({
+    id: step.id,
+    name: step.location.name,
+    latitude: step.location.latitude,
+    longitude: step.location.longitude,
+    order: step.order,
+    status: step.status === 'VALIDATED' ? 'VALIDATED' : 'PENDING',
+    actionType: step.actionType,
+  }));
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/(main)/missions')} style={styles.backBtn}>
-          <Text style={styles.backText}>← Missions</Text>
+        <TouchableOpacity
+          accessibilityLabel="Retour aux missions"
+          onPress={() => router.back()}
+          style={styles.backBtn}
+        >
+          <ArrowLeft size={20} color={AppTheme.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Mission en cours</Text>
-        <StatusBadge status={mission.status} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Mission en cours</Text>
+          {mission.vehiclePlateNumber && (
+            <Text style={styles.headerSub}>{mission.vehiclePlateNumber}</Text>
+          )}
+        </View>
+        <GpsStatusPill isTracking={isTracking} traceCount={trace.length} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Tracking Live Indicator */}
-        <View style={styles.trackingCard}>
-          <View style={styles.trackingDot} />
-          <View style={styles.trackingInfo}>
-            <Text style={styles.trackingTitle}>
-              {isTracking ? 'Suivi GPS Actif' : 'Positionnement standard'}
-            </Text>
-            <Text style={styles.trackingSubtitle}>
-              Véhicule {mission.vehiclePlateNumber || mission.vehicleId.substring(0, 8)}
-            </Text>
-          </View>
-        </View>
+        {isTracking && (
+          <MissionMap
+            currentGps={currentGps}
+            trace={trace}
+            stops={mapStops}
+            currentStepIndex={currentStepIndex >= 0 ? currentStepIndex : sortedSteps.length}
+          />
+        )}
 
-        {/* Current Step Focus Box */}
+        {!isTracking && (
+          <View style={styles.trackingCard}>
+            <Navigation2 size={18} color={AppTheme.textMuted} />
+            <View style={styles.trackingInfo}>
+              <Text style={styles.trackingTitle}>Positionnement standard</Text>
+              <Text style={styles.trackingSubtitle}>
+                Le suivi par point sera actif au démarrage de la mission.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {currentStep && (
           <View style={styles.currentStepCard}>
             <View style={styles.currentStepBadge}>
-              <Text style={styles.currentStepBadgeText}>ÉTAPE {currentStepIndex + 1} SUR {sortedSteps.length}</Text>
+              <Text style={styles.currentStepBadgeText}>
+                ÉTAPE {currentStepIndex + 1} / {sortedSteps.length}
+              </Text>
             </View>
 
             <Text style={styles.currentStepAction}>
-              {currentStep.actionType === 'COLLECT'
-                ? 'Collecte des déchets'
-                : currentStep.actionType === 'DROPOFF'
-                ? 'Dépôt au centre de traitement'
-                : currentStep.actionType === 'WEIGH'
-                ? 'Pesée du camion'
-                : 'Point de contrôle'}
+              {ACTION_LABELS[currentStep.actionType] ?? currentStep.actionType}
             </Text>
-
             <Text style={styles.currentStepLocationName}>{currentStep.location.name}</Text>
             {currentStep.location.address && (
               <Text style={styles.currentStepAddress}>{currentStep.location.address}</Text>
@@ -121,72 +212,43 @@ export default function MissionProgressScreen() {
 
             <BigButton
               label="Scanner le QR code du site"
+              icon={<ScanLine size={20} color="#FFFFFF" />}
               onPressed={() =>
                 router.push(`/(main)/missions/${mission.id}/steps/${currentStep.id}/scan`)
               }
-              style={styles.scanButton}
             />
           </View>
         )}
 
         {isAllCompleted && (
           <View style={styles.completedBox}>
-            <Text style={styles.completedIcon}>🎉</Text>
-            <Text style={styles.completedTitle}>Toutes les étapes sont validées !</Text>
+            <View style={styles.completedIconWrap}>
+              <CheckCircle2 size={40} color={AppTheme.success} />
+            </View>
+            <Text style={styles.completedTitle}>Étapes toutes validées !</Text>
             <Text style={styles.completedSubtitle}>
               Vous avez terminé l&apos;ensemble du parcours prévu pour cette mission.
             </Text>
             <BigButton
               label="Retour aux missions du jour"
+              variant="secondary"
               onPressed={() => router.replace('/(main)/missions')}
               style={styles.completedButton}
             />
           </View>
         )}
 
-        {/* Steps Progression Timeline */}
-        <Text style={styles.timelineTitle}>Parcours de la mission</Text>
+        <View style={styles.syncRow}>
+          <Text style={styles.timelineTitle}>Parcours de la mission</Text>
+          <SyncStatusPill
+            state={isSyncing ? 'syncing' : !isConnected ? 'offline' : counts.total > 0 ? 'pending' : 'online'}
+            pendingCount={counts.total}
+          />
+        </View>
 
-        {sortedSteps.map((step: MissionStep, index: number) => {
-          const isDone = step.status === 'VALIDATED';
-          const isCurrent = index === currentStepIndex;
-
-          return (
-            <View
-              key={step.id}
-              style={[
-                styles.timelineItem,
-                isDone ? styles.timelineItemDone : null,
-                isCurrent ? styles.timelineItemCurrent : null,
-              ]}
-            >
-              <View
-                style={[
-                  styles.timelineOrder,
-                  isDone ? styles.timelineOrderDone : isCurrent ? styles.timelineOrderCurrent : null,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.timelineOrderText,
-                    isDone || isCurrent ? styles.timelineOrderTextActive : null,
-                  ]}
-                >
-                  {isDone ? '✓' : index + 1}
-                </Text>
-              </View>
-
-              <View style={styles.timelineContent}>
-                <Text style={styles.timelineStepName}>{step.location.name}</Text>
-                <Text style={styles.timelineAction}>
-                  {step.actionType} • Rayon {step.location.allowedRadius}m
-                </Text>
-              </View>
-
-              <StatusBadge status={step.status} />
-            </View>
-          );
-        })}
+        {sortedSteps.map((step, index) => (
+          <MissionStepCard key={step.id} step={step} index={index} isCurrent={index === currentStepIndex} />
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -195,90 +257,92 @@ export default function MissionProgressScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: AppTheme.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: AppTheme.border,
   },
   backBtn: {
-    paddingVertical: 4,
-    paddingRight: 8,
+    width: 38,
+    height: 38,
+    borderRadius: AppRadius.md,
+    backgroundColor: AppTheme.subtle,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  backText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: AppTheme.primary,
+  headerCenter: {
+    flex: 1,
+    marginHorizontal: 10,
   },
   headerTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: AppTheme.text,
   },
+  headerSub: {
+    fontSize: 12,
+    color: AppTheme.textSecondary,
+    fontWeight: '600',
+    marginTop: 1,
+  },
   content: {
-    padding: 20,
+    padding: 16,
     paddingBottom: 40,
   },
   trackingCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: AppTheme.primaryLight,
+    backgroundColor: AppTheme.card,
     padding: 14,
-    borderRadius: 14,
+    borderRadius: AppRadius.md,
+    borderWidth: 1,
+    borderColor: AppTheme.border,
     marginBottom: 16,
-  },
-  trackingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: AppTheme.primary,
-    marginRight: 12,
   },
   trackingInfo: {
     flex: 1,
+    marginLeft: 10,
   },
   trackingTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: AppTheme.primaryDark,
+    color: AppTheme.text,
   },
   trackingSubtitle: {
     fontSize: 12,
     color: AppTheme.textSecondary,
-    fontWeight: '600',
+    fontWeight: '500',
+    marginTop: 2,
   },
   currentStepCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 2,
-    borderColor: AppTheme.primary,
-    shadowColor: AppTheme.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
-    marginBottom: 24,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: AppTheme.tracking,
+    ...AppShadow.pop,
+    marginBottom: 20,
   },
   currentStepBadge: {
-    backgroundColor: AppTheme.primaryLight,
+    backgroundColor: AppTheme.trackingLight,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 8,
+    borderRadius: AppRadius.pill,
     alignSelf: 'flex-start',
     marginBottom: 10,
   },
   currentStepBadgeText: {
     fontSize: 11,
     fontWeight: '800',
-    color: AppTheme.primaryDark,
-    letterSpacing: 0.5,
+    color: AppTheme.tracking,
+    letterSpacing: 0.6,
   },
   currentStepAction: {
     fontSize: 13,
@@ -299,32 +363,28 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   radiusPill: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: AppTheme.subtle,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: AppRadius.pill,
     alignSelf: 'flex-start',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   radiusText: {
     fontSize: 12,
     color: AppTheme.textSecondary,
     fontWeight: '600',
   },
-  scanButton: {
-    marginTop: 4,
-  },
   completedBox: {
-    backgroundColor: '#F0FDF4',
-    borderRadius: 20,
+    backgroundColor: AppTheme.successLight,
+    borderRadius: AppRadius.xl,
     padding: 24,
-    borderWidth: 1.5,
-    borderColor: '#86EFAC',
+    borderWidth: 1,
+    borderColor: `${AppTheme.success}40`,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
-  completedIcon: {
-    fontSize: 48,
+  completedIconWrap: {
     marginBottom: 12,
   },
   completedTitle: {
@@ -344,65 +404,15 @@ const styles = StyleSheet.create({
   completedButton: {
     width: '100%',
   },
+  syncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   timelineTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: AppTheme.text,
-    marginBottom: 12,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  timelineItemDone: {
-    backgroundColor: '#F8FAFC',
-    opacity: 0.75,
-  },
-  timelineItemCurrent: {
-    borderColor: AppTheme.primary,
-    borderWidth: 1.5,
-  },
-  timelineOrder: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  timelineOrderDone: {
-    backgroundColor: AppTheme.successLight,
-  },
-  timelineOrderCurrent: {
-    backgroundColor: AppTheme.primary,
-  },
-  timelineOrderText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: AppTheme.text,
-  },
-  timelineOrderTextActive: {
-    color: AppTheme.primaryDark,
-  },
-  timelineContent: {
-    flex: 1,
-    marginRight: 8,
-  },
-  timelineStepName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: AppTheme.text,
-  },
-  timelineAction: {
-    fontSize: 12,
-    color: AppTheme.textSecondary,
-    marginTop: 2,
   },
 });

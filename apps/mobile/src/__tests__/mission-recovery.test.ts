@@ -1,4 +1,44 @@
+/* eslint-disable import/first -- vi.mock() must textually precede imports (Vitest hoists them) */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('expo-secure-store', () => ({
+  getItemAsync: vi.fn(async (): Promise<string | null> => null),
+  setItemAsync: vi.fn(async (): Promise<void> => undefined),
+  deleteItemAsync: vi.fn(async (): Promise<void> => undefined),
+}));
+
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: vi.fn((): Record<string, unknown> => ({})),
+  requireOptionalNativeModule: vi.fn((): null => null),
+  NativeModulesProxy: {},
+}));
+
+vi.mock('expo-location', () => ({
+  requestForegroundPermissionsAsync: vi.fn(async () => ({ granted: true })),
+  requestBackgroundPermissionsAsync: vi.fn(async () => ({ granted: true })),
+  getForegroundPermissionsAsync: vi.fn(async () => ({ granted: true })),
+  getBackgroundPermissionsAsync: vi.fn(async () => ({ granted: true })),
+  hasServicesEnabledAsync: vi.fn(async () => true),
+  getCurrentPositionAsync: vi.fn(async () => ({
+    coords: { latitude: -4.325, longitude: 15.322, accuracy: 10 },
+    timestamp: Date.now(),
+  })),
+  watchPositionAsync: vi.fn(async () => ({ remove: vi.fn() })),
+  hasStartedLocationUpdatesAsync: vi.fn(async () => false),
+  startLocationUpdatesAsync: vi.fn(async () => undefined),
+  stopLocationUpdatesAsync: vi.fn(async () => undefined),
+  Accuracy: { High: 4 },
+}));
+
+vi.mock('expo-sqlite', () => ({
+  openDatabaseSync: vi.fn(() => ({
+    execSync: vi.fn(),
+    runSync: vi.fn(),
+    getAllSync: vi.fn(() => []),
+    getFirstSync: vi.fn(() => ({ count: 0 })),
+  })),
+}));
+
 import * as SecureStore from 'expo-secure-store';
 import { TrackingService } from '../services/tracking.service';
 import { MissionsCacheRepository } from '../database/missions-cache.repository';

@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { CheckCircle2, XCircle, CloudOff } from 'lucide-react-native';
 import { BigButton } from '../../../../../../src/components/BigButton';
 import { frenchMessageForErrorCode } from '../../../../../../src/utils/error-messages';
-import { AppTheme } from '../../../../../../src/theme/colors';
+import { AppTheme, AppRadius, AppShadow, AppSpacing } from '../../../../../../src/theme/colors';
 
 export default function ValidationResultScreen() {
   const {
@@ -33,25 +34,24 @@ export default function ValidationResultScreen() {
     ? "Pas de réseau : la validation a été enregistrée sur l'appareil et sera envoyée automatiquement dès que la connexion revient."
     : frenchMessageForErrorCode(errorCode, message);
 
+  const accentColor = isSuccess
+    ? AppTheme.success
+    : isQueued
+    ? AppTheme.info
+    : AppTheme.danger;
+  const accentBg = isSuccess
+    ? AppTheme.successLight
+    : isQueued
+    ? AppTheme.infoLight
+    : AppTheme.dangerLight;
+  const ResultIcon = isSuccess ? CheckCircle2 : isQueued ? CloudOff : XCircle;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.resultCard}>
-          <View
-            style={[
-              styles.iconWrapper,
-              {
-                backgroundColor: isSuccess
-                  ? AppTheme.successLight
-                  : isQueued
-                  ? AppTheme.primaryLight
-                  : AppTheme.dangerLight,
-              },
-            ]}
-          >
-            <Text style={styles.resultIcon}>
-              {isSuccess ? '✓' : isQueued ? '☁' : '✕'}
-            </Text>
+          <View style={[styles.iconWrapper, { backgroundColor: accentBg }]}>
+            <ResultIcon size={52} color={accentColor} strokeWidth={2.2} />
           </View>
 
           <Text style={styles.resultTitle}>
@@ -69,12 +69,14 @@ export default function ValidationResultScreen() {
           {isSuccess || isQueued ? (
             <BigButton
               label="Retour à la mission"
+              variant="primary"
               onPressed={() => router.replace(`/(main)/missions/${missionId}/progress`)}
             />
           ) : (
             <>
               <BigButton
                 label="Réessayer cette étape"
+                variant="danger"
                 onPressed={() =>
                   router.replace(`/(main)/missions/${missionId}/steps/${stepId}/scan`)
                 }
@@ -96,36 +98,33 @@ export default function ValidationResultScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
   container: {
     flex: 1,
-    padding: 24,
+    padding: AppSpacing.xxl,
     justifyContent: 'space-between',
   },
   resultCard: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: AppSpacing.lg,
   },
   iconWrapper: {
     width: 96,
     height: 96,
-    borderRadius: 48,
+    borderRadius: AppRadius.pill,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-  },
-  resultIcon: {
-    fontSize: 44,
-    fontWeight: '900',
+    marginBottom: AppSpacing.xxl,
+    ...AppShadow.card,
   },
   resultTitle: {
     fontSize: 24,
     fontWeight: '800',
     color: AppTheme.text,
-    marginBottom: 12,
+    marginBottom: AppSpacing.md,
     textAlign: 'center',
   },
   resultDesc: {
@@ -133,12 +132,12 @@ const styles = StyleSheet.create({
     color: AppTheme.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
-    paddingHorizontal: 8,
+    paddingHorizontal: AppSpacing.sm,
   },
   actions: {
-    paddingBottom: 16,
+    paddingBottom: AppSpacing.lg,
   },
   retryBtn: {
-    marginBottom: 12,
+    marginBottom: AppSpacing.md,
   },
 });

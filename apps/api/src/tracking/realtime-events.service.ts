@@ -37,6 +37,7 @@ export class RealtimeEventsService {
     missionId?: string | null;
     latitude: number;
     longitude: number;
+    accuracy?: number | null;
     speed?: number | null;
     heading?: number | null;
     recordedAt: string;
@@ -46,6 +47,7 @@ export class RealtimeEventsService {
       missionId: params.missionId ?? null,
       latitude: params.latitude,
       longitude: params.longitude,
+      accuracy: params.accuracy ?? null,
       speed: params.speed ?? null,
       heading: params.heading ?? null,
       recordedAt: params.recordedAt,

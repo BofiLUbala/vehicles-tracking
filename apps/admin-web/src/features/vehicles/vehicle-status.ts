@@ -28,3 +28,21 @@ export function vehicleStatusToBadgeVariant(status: VehicleStatus): 'default' | 
       return 'outline';
   }
 }
+
+/** Teinte unifiée pour les pillules statut véhicule (voir `StatusBadge`). */
+export function vehicleStatusTone(status: VehicleStatus): 'success' | 'info' | 'navy' | 'warning' | 'neutral' | 'danger' {
+  switch (status) {
+    case 'AVAILABLE':
+      return 'success';
+    case 'ON_MISSION':
+      return 'info';
+    case 'BROKEN_DOWN':
+      return 'danger';
+    case 'IN_MAINTENANCE':
+      return 'warning';
+    case 'DISABLED':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}

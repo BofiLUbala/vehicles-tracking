@@ -15,9 +15,9 @@ export const ALERT_LEVEL_VARIANTS: Record<AlertLevel, NonNullable<BadgeProps['va
 
 export const ALERT_LEVEL_CLASSES: Record<AlertLevel, string> = {
   LOW: 'border-transparent bg-muted text-muted-foreground',
-  MEDIUM: 'border-transparent bg-orange-100 text-orange-700',
-  HIGH: 'border-transparent bg-red-100 text-red-700',
-  CRITICAL: 'border-transparent bg-red-600 text-white',
+  MEDIUM: 'border-transparent bg-warning/10 text-warning',
+  HIGH: 'border-transparent bg-danger/10 text-danger',
+  CRITICAL: 'border-transparent bg-danger text-white',
 };
 
 export const ALERT_LEVEL_LABELS: Record<AlertLevel, string> = {

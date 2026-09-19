@@ -7,6 +7,8 @@ type MessageHandler = (data: any) => void;
 class WebSocketServiceClass {
   private socket: Socket | null = null;
   private listeners: Map<string, Set<MessageHandler>> = new Map();
+  /** Rooms désirées — ré-émises à chaque (re)connexion, sinon une souscription faite hors ligne serait perdue. */
+  private rooms: Set<string> = new Set();
 
   async connect(): Promise<void> {
     if (this.socket?.connected) return;
@@ -32,6 +34,10 @@ class WebSocketServiceClass {
           this.socket?.on(event, handler);
         });
       });
+      // Ré-abonne aux rooms demandées (le serveur ne mémorise aucun abonnement côté client).
+      this.rooms.forEach((room) => {
+        this.socket?.emit('subscribe', { room });
+      });
     });
 
     this.socket.on('connect_error', () => {
@@ -47,12 +53,14 @@ class WebSocketServiceClass {
   }
 
   subscribeToRoom(room: string): void {
+    this.rooms.add(room);
     if (this.socket?.connected) {
       this.socket.emit('subscribe', { room });
     }
   }
 
   unsubscribeFromRoom(room: string): void {
+    this.rooms.delete(room);
     if (this.socket?.connected) {
       this.socket.emit('unsubscribe', { room });
     }

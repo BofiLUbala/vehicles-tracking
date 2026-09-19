@@ -14,11 +14,25 @@ export interface GpsCoordinates {
   timestamp: string;
 }
 
+export type GpsPositionListener = (position: GpsCoordinates) => void;
+
 class TrackingServiceClass {
   private foregroundSubscription: Location.LocationSubscription | null = null;
   private fallbackTimer: ReturnType<typeof setInterval> | null = null;
   private activeVehicleId: string | null = null;
   private activeMissionId: string | null = null;
+  private positionListeners: Set<GpsPositionListener> = new Set();
+
+  addPositionListener(listener: GpsPositionListener): () => void {
+    this.positionListeners.add(listener);
+    return () => { this.positionListeners.delete(listener); };
+  }
+
+  private notifyPositionListeners(position: GpsCoordinates) {
+    for (const listener of this.positionListeners) {
+      try { listener(position); } catch {}
+    }
+  }
 
   async requestPermissions(): Promise<{
     foregroundGranted: boolean;
@@ -123,7 +137,7 @@ class TrackingServiceClass {
           showsBackgroundLocationIndicator: true,
           foregroundService: {
             notificationTitle: 'Mission en cours',
-            notificationBody: 'Le suivi du véhicule est actif pendant votre mission.',
+            notificationBody: 'Le suivi du vehicule est actif pendant votre mission.',
             notificationColor: '#0284C7',
           },
         });
@@ -149,6 +163,7 @@ class TrackingServiceClass {
             isMocked: pos.isMocked,
             recordedAt: pos.timestamp,
           });
+          this.notifyPositionListeners(pos);
         }
       }
     }, 15000);
@@ -159,18 +174,31 @@ class TrackingServiceClass {
   private handleNewLocation(loc: Location.LocationObject) {
     if (!this.activeVehicleId) return;
 
-    GpsQueueRepository.enqueue({
-      vehicleId: this.activeVehicleId,
-      missionId: this.activeMissionId,
+    const position: GpsCoordinates = {
       latitude: loc.coords.latitude,
       longitude: loc.coords.longitude,
-      accuracy: loc.coords.accuracy,
+      accuracy: loc.coords.accuracy ?? 0,
       altitude: loc.coords.altitude,
       speed: loc.coords.speed,
       heading: loc.coords.heading,
       isMocked: loc.mocked ?? false,
-      recordedAt: new Date(loc.timestamp).toISOString(),
+      timestamp: new Date(loc.timestamp).toISOString(),
+    };
+
+    GpsQueueRepository.enqueue({
+      vehicleId: this.activeVehicleId,
+      missionId: this.activeMissionId,
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracy: position.accuracy,
+      altitude: position.altitude,
+      speed: position.speed,
+      heading: position.heading,
+      isMocked: position.isMocked,
+      recordedAt: position.timestamp,
     });
+
+    this.notifyPositionListeners(position);
   }
 
   private async stopTrackingOnly() {

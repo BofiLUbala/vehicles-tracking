@@ -11,15 +11,15 @@ describe('statusToColor', () => {
   });
 
   it('matches the documented legend colors', () => {
-    expect(statusToColor('MOVING')).toBe('#22c55e');
-    expect(statusToColor('ON_MISSION')).toBe('#3b82f6');
-    expect(statusToColor('STOPPED')).toBe('#f97316');
-    expect(statusToColor('OFFLINE')).toBe('#ef4444');
-    expect(statusToColor('SUSPICIOUS')).toBe('#a855f7');
+    expect(statusToColor('MOVING')).toBe('#18A957');
+    expect(statusToColor('ON_MISSION')).toBe('#1479FF');
+    expect(statusToColor('STOPPED')).toBe('#F59E0B');
+    expect(statusToColor('OFFLINE')).toBe('#98A2B3');
+    expect(statusToColor('SUSPICIOUS')).toBe('#E53E3E');
   });
 
   it('falls back to a default color for an unknown status (defensive)', () => {
-    expect(statusToColor('UNKNOWN' as VehicleTrackingStatus)).toBe('#6b7280');
+    expect(statusToColor('UNKNOWN' as VehicleTrackingStatus)).toBe('#667085');
   });
 
   it('is exhaustive over STATUS_COLORS keys', () => {

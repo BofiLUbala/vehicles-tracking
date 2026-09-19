@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { AppTheme } from '../theme/colors';
+import { AlertTriangle } from 'lucide-react-native';
+import { AppRadius, AppShadow, AppTheme } from '../theme/colors';
 import { BigButton } from './BigButton';
 
 interface ErrorViewProps {
@@ -15,7 +16,10 @@ export const ErrorView: React.FC<ErrorViewProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.title}>Erreur</Text>
+        <View style={styles.icon}>
+          <AlertTriangle size={24} color={AppTheme.danger} />
+        </View>
+        <Text style={styles.title}>Oups !</Text>
         <Text style={styles.message}>{message}</Text>
         {onRetry && (
           <BigButton
@@ -38,24 +42,29 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
     padding: 24,
     width: '100%',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#FEE2E2',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    borderColor: `${AppTheme.danger}22`,
+    ...AppShadow.card,
+  },
+  icon: {
+    width: 48,
+    height: 48,
+    borderRadius: AppRadius.md,
+    backgroundColor: AppTheme.dangerLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: AppTheme.danger,
-    marginBottom: 8,
+    color: AppTheme.text,
+    marginBottom: 6,
   },
   message: {
     fontSize: 14,

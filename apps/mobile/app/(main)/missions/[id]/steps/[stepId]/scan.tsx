@@ -8,8 +8,9 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Camera, ScanLine, X } from 'lucide-react-native';
 import { BigButton } from '../../../../../../src/components/BigButton';
-import { AppTheme } from '../../../../../../src/theme/colors';
+import { AppTheme, AppRadius, AppShadow, AppSpacing } from '../../../../../../src/theme/colors';
 
 export default function QrScanScreen() {
   const { id: missionId, stepId } = useLocalSearchParams<{ id: string; stepId: string }>();
@@ -21,6 +22,7 @@ export default function QrScanScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerContainer}>
+          <ScanLine size={36} color={AppTheme.textMuted} />
           <Text style={styles.loadingText}>Initialisation de la caméra…</Text>
         </View>
       </SafeAreaView>
@@ -31,7 +33,9 @@ export default function QrScanScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.permissionCard}>
-          <Text style={styles.permissionIcon}>📷</Text>
+          <View style={styles.permissionIcon}>
+            <Camera size={32} color={AppTheme.primary} />
+          </View>
           <Text style={styles.permissionTitle}>Caméra requise</Text>
           <Text style={styles.permissionSubtitle}>
             L&apos;application a besoin d&apos;accéder à votre appareil photo pour scanner le QR code physique du site.
@@ -52,8 +56,8 @@ export default function QrScanScreen() {
 
     // Navigate to photo step with captured QR token
     router.push({
-      pathname: `/(main)/missions/${missionId}/steps/${stepId}/photo`,
-      params: { qrToken: data },
+      pathname: '/(main)/missions/[id]/steps/[stepId]/photo',
+      params: { id: missionId, stepId, qrToken: data },
     });
   };
 
@@ -70,10 +74,11 @@ export default function QrScanScreen() {
       <SafeAreaView style={styles.overlay}>
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-            <Text style={styles.closeText}>✕ Annuler</Text>
+            <X size={16} color="#FFFFFF" />
+            <Text style={styles.closeText}>Annuler</Text>
           </TouchableOpacity>
           <Text style={styles.topTitle}>Scan QR Code</Text>
-          <View style={{ width: 60 }} />
+          <View style={{ width: 70 }} />
         </View>
 
         <View style={styles.scannerTargetWrapper}>
@@ -109,9 +114,9 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
     justifyContent: 'center',
-    padding: 24,
+    padding: AppSpacing.xxl,
   },
   centerContainer: {
     alignItems: 'center',
@@ -120,29 +125,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: AppTheme.textSecondary,
     fontWeight: '600',
+    marginTop: AppSpacing.lg,
   },
   permissionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: AppSpacing.xxl,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    ...AppShadow.card,
   },
   permissionIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+    width: 64,
+    height: 64,
+    borderRadius: AppRadius.pill,
+    backgroundColor: AppTheme.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: AppSpacing.lg,
   },
   permissionTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: AppTheme.text,
-    marginBottom: 8,
+    marginBottom: AppSpacing.sm,
   },
   permissionSubtitle: {
     fontSize: 14,
     color: AppTheme.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: 24,
+    marginBottom: AppSpacing.xxl,
   },
   permissionBtn: {
     width: '100%',
@@ -155,19 +169,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: AppSpacing.xl,
     paddingTop: 10,
   },
   closeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: AppRadius.pill,
   },
   closeText: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+    marginLeft: 6,
   },
   topTitle: {
     color: '#FFFFFF',
@@ -182,43 +199,43 @@ const styles = StyleSheet.create({
     height: 250,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 20,
+    borderRadius: AppRadius.xl,
     position: 'relative',
-    marginBottom: 20,
+    marginBottom: AppSpacing.xl,
   },
   corner: {
     position: 'absolute',
     width: 30,
     height: 30,
-    borderColor: AppTheme.primary,
+    borderColor: AppTheme.tracking,
   },
   tl: {
     top: -2,
     left: -2,
     borderTopWidth: 4,
     borderLeftWidth: 4,
-    borderTopLeftRadius: 16,
+    borderTopLeftRadius: AppRadius.md,
   },
   tr: {
     top: -2,
     right: -2,
     borderTopWidth: 4,
     borderRightWidth: 4,
-    borderTopRightRadius: 16,
+    borderTopRightRadius: AppRadius.md,
   },
   bl: {
     bottom: -2,
     left: -2,
     borderBottomWidth: 4,
     borderLeftWidth: 4,
-    borderBottomLeftRadius: 16,
+    borderBottomLeftRadius: AppRadius.md,
   },
   br: {
     bottom: -2,
     right: -2,
     borderBottomWidth: 4,
     borderRightWidth: 4,
-    borderBottomRightRadius: 16,
+    borderBottomRightRadius: AppRadius.md,
   },
   instructions: {
     color: '#FFFFFF',
@@ -232,6 +249,6 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   bottomBar: {
-    padding: 24,
+    padding: AppSpacing.xxl,
   },
 });

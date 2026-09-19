@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { ConnectivityPill } from '../../src/components/ConnectivityPill';
+import { AppTheme } from '../../src/theme/colors';
 
 export default function MainLayout() {
   return (
@@ -9,7 +10,7 @@ export default function MainLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: '#F8FAFC' },
+          contentStyle: { backgroundColor: AppTheme.background },
         }}
       >
         <Stack.Screen name="permissions/gps" />
@@ -34,6 +35,6 @@ export default function MainLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
 });

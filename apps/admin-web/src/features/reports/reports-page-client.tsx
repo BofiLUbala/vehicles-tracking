@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { ErrorState, LoadingSkeleton } from '@/components/empty-state';
 import { cn } from '@/lib/utils';
 import { REPORT_PAGE_SIZE, fetchFuelReport, fetchMissionsReport } from '@/features/reports/api';
 import { FuelReportFiltersBar, MissionReportFiltersBar } from '@/features/reports/reports-filters';
@@ -44,8 +45,13 @@ export function ReportsPageClient() {
   const lastRowNumber = meta ? meta.offset + meta.returned : 0;
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">Rapports</h1>
+    <div className="flex flex-col gap-5 p-6 lg:p-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-bold tracking-tight">Rapports</h1>
+        <p className="text-sm text-muted-foreground">
+          Aperçu exportable de vos missions et de vos pleins de carburant.
+        </p>
+      </div>
 
       <div className="flex items-center gap-2" role="tablist" aria-label="Type de rapport">
         {REPORT_TABS.map((tab) => (
@@ -67,30 +73,23 @@ export function ReportsPageClient() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Filtres</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {type === 'missions' ? (
-            <MissionReportFiltersBar
-              filters={missionFilters}
-              onChange={(next) => {
-                setMissionFilters(next);
-                resetToFirstPage();
-              }}
-            />
-          ) : (
-            <FuelReportFiltersBar
-              filters={fuelFilters}
-              onChange={(next) => {
-                setFuelFilters(next);
-                resetToFirstPage();
-              }}
-            />
-          )}
-        </CardContent>
-      </Card>
+      {type === 'missions' ? (
+        <MissionReportFiltersBar
+          filters={missionFilters}
+          onChange={(next) => {
+            setMissionFilters(next);
+            resetToFirstPage();
+          }}
+        />
+      ) : (
+        <FuelReportFiltersBar
+          filters={fuelFilters}
+          onChange={(next) => {
+            setFuelFilters(next);
+            resetToFirstPage();
+          }}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">Aperçu des données avant export.</p>
@@ -99,8 +98,8 @@ export function ReportsPageClient() {
 
       <Card>
         <CardContent className="p-0">
-          {activeQuery.isLoading && <p className="p-4 text-sm text-muted-foreground">Chargement du rapport…</p>}
-          {activeQuery.isError && <p className="p-4 text-sm text-destructive">Impossible de charger le rapport.</p>}
+          {activeQuery.isLoading && <LoadingSkeleton className="h-64" />}
+          {activeQuery.isError && <ErrorState message="Impossible de charger le rapport." />}
           {activeQuery.data && type === 'missions' && <MissionsReportTable rows={missionsQuery.data?.rows ?? []} />}
           {activeQuery.data && type === 'fuel' && <FuelReportTable rows={fuelQuery.data?.rows ?? []} />}
         </CardContent>

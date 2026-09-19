@@ -1,60 +1,84 @@
 import React from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, CloudOff, Fuel, MapPin, RefreshCw } from 'lucide-react-native';
 import { useSync } from '../../../src/context/SyncContext';
 import { BigButton } from '../../../src/components/BigButton';
-import { AppTheme } from '../../../src/theme/colors';
+import { SyncStatusPill } from '../../../src/components/SyncStatusPill';
+import { AppRadius, AppShadow, AppSpacing, AppTheme } from '../../../src/theme/colors';
 
 export default function PendingSyncScreen() {
   const { counts, isSyncing, isConnected, syncNow } = useSync();
   const router = useRouter();
 
   const hasFailed = counts.gpsFailed + counts.validationsFailed + counts.fuelFailed > 0;
+  const syncState: 'online' | 'syncing' | 'offline' | 'pending' = isSyncing
+    ? 'syncing'
+    : !isConnected
+    ? 'offline'
+    : counts.total > 0
+    ? 'pending'
+    : 'online';
+
+  const bannerConfig = counts.total === 0
+    ? { icon: CheckCircle2, color: AppTheme.success, bg: AppTheme.successLight, title: 'Toutes les données sont synchronisées' }
+    : hasFailed
+    ? { icon: AlertTriangle, color: AppTheme.danger, bg: AppTheme.dangerLight, title: `${counts.total} élément(s) en attente d'envoi` }
+    : { icon: CloudOff, color: AppTheme.warning, bg: AppTheme.warningLight, title: `${counts.total} élément(s) en attente d'envoi` };
+
+  const BannerIcon = bannerConfig.icon;
+
+  const queues = [
+    {
+      key: 'gps',
+      name: 'Positions GPS',
+      icon: MapPin,
+      color: AppTheme.tracking,
+      bg: AppTheme.trackingLight,
+      pending: counts.gpsPending,
+      failed: counts.gpsFailed,
+      fullWidth: false,
+    },
+    {
+      key: 'validations',
+      name: "Validations d'étapes (QR + Photo)",
+      icon: Camera,
+      color: AppTheme.primary,
+      bg: AppTheme.primaryLight,
+      pending: counts.validationsPending,
+      failed: counts.validationsFailed,
+      fullWidth: false,
+    },
+    {
+      key: 'fuel',
+      name: 'Déclarations de carburant',
+      icon: Fuel,
+      color: AppTheme.info,
+      bg: AppTheme.infoLight,
+      pending: counts.fuelPending,
+      failed: counts.fuelFailed,
+      fullWidth: true,
+    },
+  ];
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Retour</Text>
+          <ArrowLeft size={20} color={AppTheme.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Synchronisation</Text>
-        <View style={{ width: 60 }} />
+        <SyncStatusPill state={syncState} pendingCount={counts.total} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Status banner */}
-        <View
-          style={[
-            styles.statusBanner,
-            {
-              backgroundColor: counts.total === 0
-                ? AppTheme.successLight
-                : hasFailed
-                ? AppTheme.dangerLight
-                : AppTheme.warningLight,
-            },
-          ]}
-        >
-          <Text style={styles.bannerIcon}>
-            {counts.total === 0 ? '✓' : hasFailed ? '⚠️' : '☁'}
-          </Text>
+        <View style={[styles.statusBanner, { backgroundColor: bannerConfig.bg }]}>
+          <View style={[styles.bannerIconWrap, { backgroundColor: `${bannerConfig.color}1A` }]}>
+            <BannerIcon size={22} color={bannerConfig.color} />
+          </View>
           <View style={styles.bannerContent}>
-            <Text
-              style={[
-                styles.bannerTitle,
-                {
-                  color: counts.total === 0
-                    ? AppTheme.success
-                    : hasFailed
-                    ? AppTheme.danger
-                    : AppTheme.warning,
-                },
-              ]}
-            >
-              {counts.total === 0
-                ? 'Toutes les données sont synchronisées'
-                : `${counts.total} élément(s) en attente d'envoi`}
-            </Text>
+            <Text style={[styles.bannerTitle, { color: bannerConfig.color }]}>{bannerConfig.title}</Text>
             <Text style={styles.bannerSubtitle}>
               {isConnected
                 ? 'Connexion active avec le serveur central.'
@@ -63,49 +87,39 @@ export default function PendingSyncScreen() {
           </View>
         </View>
 
-        {/* Queues list */}
+        {/* Queues grid */}
         <Text style={styles.sectionTitle}>Détail des files d&apos;attente</Text>
 
-        <View style={styles.queueCard}>
-          <View style={styles.queueIconWrapper}>
-            <Text style={styles.queueIcon}>📍</Text>
-          </View>
-          <View style={styles.queueInfo}>
-            <Text style={styles.queueName}>Positions GPS</Text>
-            <Text style={styles.queueCounts}>
-              {counts.gpsPending} en attente
-              {counts.gpsFailed > 0 ? ` (${counts.gpsFailed} en échec)` : ''}
-            </Text>
-          </View>
-          {counts.gpsPending === 0 && <Text style={styles.checkDone}>✓</Text>}
-        </View>
-
-        <View style={styles.queueCard}>
-          <View style={styles.queueIconWrapper}>
-            <Text style={styles.queueIcon}>📸</Text>
-          </View>
-          <View style={styles.queueInfo}>
-            <Text style={styles.queueName}>Validations d&apos;étapes (QR + Photo)</Text>
-            <Text style={styles.queueCounts}>
-              {counts.validationsPending} en attente
-              {counts.validationsFailed > 0 ? ` (${counts.validationsFailed} en échec)` : ''}
-            </Text>
-          </View>
-          {counts.validationsPending === 0 && <Text style={styles.checkDone}>✓</Text>}
-        </View>
-
-        <View style={styles.queueCard}>
-          <View style={styles.queueIconWrapper}>
-            <Text style={styles.queueIcon}>⛽</Text>
-          </View>
-          <View style={styles.queueInfo}>
-            <Text style={styles.queueName}>Déclarations de carburant</Text>
-            <Text style={styles.queueCounts}>
-              {counts.fuelPending} en attente
-              {counts.fuelFailed > 0 ? ` (${counts.fuelFailed} en échec)` : ''}
-            </Text>
-          </View>
-          {counts.fuelPending === 0 && <Text style={styles.checkDone}>✓</Text>}
+        <View style={styles.grid}>
+          {queues.map((q) => {
+            const QueueIcon = q.icon;
+            return (
+              <View
+                key={q.key}
+                style={[styles.queueCard, q.fullWidth ? styles.queueCardFull : styles.queueCardHalf]}
+              >
+                <View style={[styles.queueIconWrapper, { backgroundColor: q.bg }]}>
+                  <QueueIcon size={18} color={q.color} />
+                </View>
+                <Text style={styles.queueName}>{q.name}</Text>
+                <View style={styles.queueCountsRow}>
+                  <Text style={styles.queueCounts}>
+                    <Text style={styles.queuePending}>{q.pending}</Text> en attente
+                  </Text>
+                  {q.failed > 0 && (
+                    <View style={styles.failedPill}>
+                      <Text style={styles.failedText}>{q.failed} en échec</Text>
+                    </View>
+                  )}
+                </View>
+                {q.pending === 0 && (
+                  <View style={styles.checkDone}>
+                    <CheckCircle2 size={16} color={AppTheme.success} />
+                  </View>
+                )}
+              </View>
+            );
+          })}
         </View>
 
         <Text style={styles.infoNote}>
@@ -116,6 +130,7 @@ export default function PendingSyncScreen() {
       <View style={styles.bottomBar}>
         <BigButton
           label={isSyncing ? 'Synchronisation…' : 'Synchroniser maintenant'}
+          icon={<RefreshCw size={20} color="#FFFFFF" />}
           isLoading={isSyncing}
           disabled={counts.total === 0}
           onPressed={() => syncNow(true)}
@@ -128,46 +143,54 @@ export default function PendingSyncScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: AppSpacing.xl,
+    paddingVertical: AppSpacing.md,
+    backgroundColor: AppTheme.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: AppTheme.border,
   },
   backBtn: {
-    paddingVertical: 4,
-    paddingRight: 8,
-  },
-  backText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: AppTheme.primary,
+    width: 36,
+    height: 36,
+    borderRadius: AppRadius.pill,
+    backgroundColor: AppTheme.subtle,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '800',
     color: AppTheme.text,
+    flex: 1,
+    marginLeft: AppSpacing.md,
   },
   content: {
-    padding: 20,
+    padding: AppSpacing.xl,
     paddingBottom: 100,
   },
   statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 18,
-    borderRadius: 16,
-    marginBottom: 24,
+    padding: AppSpacing.lg,
+    borderRadius: AppRadius.lg,
+    marginBottom: AppSpacing.xxl,
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    ...AppShadow.card,
   },
-  bannerIcon: {
-    fontSize: 28,
-    marginRight: 14,
+  bannerIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: AppRadius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: AppSpacing.md,
   },
   bannerContent: {
     flex: 1,
@@ -183,69 +206,94 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
     color: AppTheme.text,
-    marginBottom: 12,
+    marginBottom: AppSpacing.md,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: AppSpacing.md,
   },
   queueCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 10,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: AppSpacing.lg,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: AppTheme.border,
+    ...AppShadow.card,
+  },
+  queueCardHalf: {
+    flexBasis: '47.5%',
+    flexGrow: 1,
+  },
+  queueCardFull: {
+    flexBasis: '100%',
   },
   queueIconWrapper: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9',
+    borderRadius: AppRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
-  },
-  queueIcon: {
-    fontSize: 18,
-  },
-  queueInfo: {
-    flex: 1,
+    marginBottom: AppSpacing.md,
   },
   queueName: {
     fontSize: 15,
     fontWeight: '700',
     color: AppTheme.text,
+    marginBottom: 6,
+  },
+  queueCountsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   queueCounts: {
     fontSize: 13,
     color: AppTheme.textSecondary,
-    marginTop: 2,
+  },
+  queuePending: {
+    fontWeight: '700',
+    color: AppTheme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  failedPill: {
+    backgroundColor: AppTheme.dangerLight,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: AppRadius.pill,
+  },
+  failedText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: AppTheme.danger,
   },
   checkDone: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: AppTheme.success,
+    position: 'absolute',
+    top: AppSpacing.lg,
+    right: AppSpacing.lg,
   },
   infoNote: {
     fontSize: 13,
     color: AppTheme.textMuted,
     textAlign: 'center',
     lineHeight: 18,
-    marginTop: 20,
-    paddingHorizontal: 16,
+    marginTop: AppSpacing.xl,
+    paddingHorizontal: AppSpacing.lg,
   },
   bottomBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 24,
+    backgroundColor: AppTheme.card,
+    paddingHorizontal: AppSpacing.xl,
+    paddingTop: AppSpacing.md,
+    paddingBottom: AppSpacing.xxl,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: AppTheme.border,
   },
 });

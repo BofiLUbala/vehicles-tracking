@@ -14,6 +14,9 @@ interface OtpEntry {
  * Fast-path Redis pour l'application des règles OTP (TTL, tentatives, cooldown de renvoi).
  * La table Postgres `otp_requests` reste la trace durable/auditable ; Redis fait respecter
  * les contraintes temps réel sans aller-retour DB à chaque tentative.
+ *
+ * Les clés sont strictement cloisonnées par mode, canal et identifiant normalisé :
+ * `otp:${mode}:${channel}:${identifier}`
  */
 @Injectable()
 export class RedisOtpStore implements OnModuleDestroy {
@@ -29,8 +32,8 @@ export class RedisOtpStore implements OnModuleDestroy {
     });
   }
 
-  private key(identifier: string, channel: string) {
-    return `otp:${channel}:${identifier}`;
+  private key(identifier: string, channel: string, mode = 'LOGIN') {
+    return `otp:${mode}:${channel}:${identifier}`;
   }
 
   async connectIfNeeded() {
@@ -39,7 +42,7 @@ export class RedisOtpStore implements OnModuleDestroy {
     }
   }
 
-  async set(identifier: string, channel: string, codeHash: string, maxAttempts = 5): Promise<void> {
+  async set(identifier: string, channel: string, codeHash: string, maxAttempts = 5, mode = 'LOGIN'): Promise<void> {
     await this.connectIfNeeded();
     const entry: OtpEntry = {
       codeHash,
@@ -48,32 +51,32 @@ export class RedisOtpStore implements OnModuleDestroy {
       expiresAt: Date.now() + this.ttlSeconds * 1000,
       lastSentAt: Date.now(),
     };
-    await this.client.set(this.key(identifier, channel), JSON.stringify(entry), 'EX', this.ttlSeconds);
+    await this.client.set(this.key(identifier, channel, mode), JSON.stringify(entry), 'EX', this.ttlSeconds);
   }
 
-  async get(identifier: string, channel: string): Promise<OtpEntry | null> {
+  async get(identifier: string, channel: string, mode = 'LOGIN'): Promise<OtpEntry | null> {
     await this.connectIfNeeded();
-    const raw = await this.client.get(this.key(identifier, channel));
+    const raw = await this.client.get(this.key(identifier, channel, mode));
     return raw ? (JSON.parse(raw) as OtpEntry) : null;
   }
 
-  async incrementAttempts(identifier: string, channel: string): Promise<OtpEntry | null> {
-    const entry = await this.get(identifier, channel);
+  async incrementAttempts(identifier: string, channel: string, mode = 'LOGIN'): Promise<OtpEntry | null> {
+    const entry = await this.get(identifier, channel, mode);
     if (!entry) return null;
     entry.attempts += 1;
     const ttl = Math.max(1, Math.floor((entry.expiresAt - Date.now()) / 1000));
-    await this.client.set(this.key(identifier, channel), JSON.stringify(entry), 'EX', ttl);
+    await this.client.set(this.key(identifier, channel, mode), JSON.stringify(entry), 'EX', ttl);
     return entry;
   }
 
-  async consume(identifier: string, channel: string): Promise<void> {
+  async consume(identifier: string, channel: string, mode = 'LOGIN'): Promise<void> {
     await this.connectIfNeeded();
-    await this.client.del(this.key(identifier, channel));
+    await this.client.del(this.key(identifier, channel, mode));
   }
 
   /** Retourne le nombre de secondes restant avant de pouvoir renvoyer un OTP, 0 si autorisé. */
-  async secondsUntilResendAllowed(identifier: string, channel: string): Promise<number> {
-    const entry = await this.get(identifier, channel);
+  async secondsUntilResendAllowed(identifier: string, channel: string, mode = 'LOGIN'): Promise<number> {
+    const entry = await this.get(identifier, channel, mode);
     if (!entry) return 0;
     const elapsed = (Date.now() - entry.lastSentAt) / 1000;
     return Math.max(0, Math.ceil(this.resendCooldownSeconds - elapsed));
@@ -83,3 +86,4 @@ export class RedisOtpStore implements OnModuleDestroy {
     this.client.disconnect();
   }
 }
+

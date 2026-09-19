@@ -1,4 +1,27 @@
+/* eslint-disable import/first -- vi.mock() must textually precede imports (Vitest hoists them) */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('expo-secure-store', () => ({
+  getItemAsync: vi.fn(async (): Promise<string | null> => null),
+  setItemAsync: vi.fn(async (): Promise<void> => undefined),
+  deleteItemAsync: vi.fn(async (): Promise<void> => undefined),
+}));
+
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: vi.fn((): Record<string, unknown> => ({})),
+  requireOptionalNativeModule: vi.fn((): null => null),
+  NativeModulesProxy: {},
+}));
+
+vi.mock('expo-sqlite', () => ({
+  openDatabaseSync: vi.fn(() => ({
+    execSync: vi.fn(),
+    runSync: vi.fn(),
+    getAllSync: vi.fn(() => []),
+    getFirstSync: vi.fn(() => ({ count: 0 })),
+  })),
+}));
+
 import { apiClient, refreshClient, setForceLogoutHandler } from '../api/client';
 import { AuthService } from '../services/auth.service';
 

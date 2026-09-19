@@ -7,9 +7,9 @@ import {
   ViewStyle,
   View,
 } from 'react-native';
-import { AppTheme } from '../theme/colors';
+import { AppShadow, AppRadius, AppTheme } from '../theme/colors';
 
-export type BigButtonVariant = 'primary' | 'secondary' | 'danger' | 'outline';
+export type BigButtonVariant = 'primary' | 'secondary' | 'danger' | 'outline' | 'success';
 
 interface BigButtonProps {
   label: string;
@@ -19,7 +19,17 @@ interface BigButtonProps {
   disabled?: boolean;
   icon?: React.ReactNode;
   style?: ViewStyle;
+  /** Petit motif (hauteur réduite) pour les actions secondaires en ligne. */
+  compact?: boolean;
 }
+
+const VARIANT_COLORS: Record<BigButtonVariant, { bg: string; text: string; border?: string }> = {
+  primary: { bg: AppTheme.primary, text: '#FFFFFF' },
+  secondary: { bg: AppTheme.navy, text: '#FFFFFF' },
+  danger: { bg: AppTheme.danger, text: '#FFFFFF' },
+  success: { bg: AppTheme.success, text: '#FFFFFF' },
+  outline: { bg: 'transparent', text: AppTheme.primary, border: AppTheme.primary },
+};
 
 export const BigButton: React.FC<BigButtonProps> = ({
   label,
@@ -29,59 +39,36 @@ export const BigButton: React.FC<BigButtonProps> = ({
   disabled = false,
   icon,
   style,
+  compact = false,
 }) => {
   const isButtonDisabled = disabled || isLoading || !onPressed;
 
-  const getBackgroundColor = (): string => {
-    if (isButtonDisabled) return '#CBD5E1'; // Slate 300
-    switch (variant) {
-      case 'primary':
-        return AppTheme.primary;
-      case 'secondary':
-        return '#0F172A'; // Slate 900
-      case 'danger':
-        return AppTheme.danger;
-      case 'outline':
-        return 'transparent';
-      default:
-        return AppTheme.primary;
-    }
-  };
-
-  const getTextColor = (): string => {
-    if (isButtonDisabled) return '#64748B'; // Slate 500
-    if (variant === 'outline') return AppTheme.primary;
-    return '#FFFFFF';
-  };
-
-  const getBorderColor = (): string => {
-    if (variant === 'outline') {
-      return isButtonDisabled ? '#CBD5E1' : AppTheme.primary;
-    }
-    return 'transparent';
-  };
+  const colors = VARIANT_COLORS[variant];
+  const base = isButtonDisabled ? { bg: '#D8DEE8', text: AppTheme.textMuted } : colors;
 
   return (
     <TouchableOpacity
-      activeOpacity={0.8}
+      activeOpacity={0.85}
       onPress={onPressed ?? undefined}
       disabled={isButtonDisabled}
       style={[
         styles.button,
+        compact && styles.buttonCompact,
         {
-          backgroundColor: getBackgroundColor(),
-          borderColor: getBorderColor(),
-          borderWidth: variant === 'outline' ? 2 : 0,
+          backgroundColor: base.bg,
+          borderColor: base.border ?? 'transparent',
+          borderWidth: variant === 'outline' ? 1.5 : 0,
         },
+        !isButtonDisabled && styles.shadow,
         style,
       ]}
     >
       {isLoading ? (
-        <ActivityIndicator color={getTextColor()} size="small" />
+        <ActivityIndicator color={base.text} size="small" />
       ) : (
         <View style={styles.content}>
           {icon && <View style={styles.iconContainer}>{icon}</View>}
-          <Text style={[styles.text, { color: getTextColor() }]}>{label}</Text>
+          <Text style={[styles.text, compact && styles.textCompact, { color: base.text }]}>{label}</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -91,16 +78,17 @@ export const BigButton: React.FC<BigButtonProps> = ({
 const styles = StyleSheet.create({
   button: {
     height: 56,
-    borderRadius: 14,
+    borderRadius: AppRadius.xl,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
   },
+  buttonCompact: {
+    height: 44,
+    borderRadius: AppRadius.md,
+    paddingHorizontal: 16,
+  },
+  shadow: AppShadow.card,
   content: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -112,6 +100,9 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 17,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+  },
+  textCompact: {
+    fontSize: 15,
   },
 });

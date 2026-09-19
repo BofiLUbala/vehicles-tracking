@@ -1,5 +1,11 @@
-import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+import * as SecureStoreNative from 'expo-secure-store';
+import webSecureStore from '../utils/web-secure-store';
 import { Driver } from '../types/auth.types';
+
+const SecureStore = Platform.OS === 'web'
+  ? webSecureStore
+  : SecureStoreNative;
 
 const ACCESS_TOKEN_KEY = 'tv_access_token';
 const REFRESH_TOKEN_KEY = 'tv_refresh_token';

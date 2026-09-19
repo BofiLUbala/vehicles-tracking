@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
+import { MapPin, Navigation, Fuel } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { TrackingService } from '../../../src/services/tracking.service';
 import { BigButton } from '../../../src/components/BigButton';
-import { AppTheme } from '../../../src/theme/colors';
+import { AppRadius, AppShadow, AppSpacing, AppTheme } from '../../../src/theme/colors';
 
 export default function GpsPermissionScreen() {
   const [isGranted, setIsGranted] = useState(false);
@@ -35,7 +36,7 @@ export default function GpsPermissionScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.iconContainer}>
-          <Text style={styles.icon}>📍</Text>
+          <MapPin size={34} color={AppTheme.primary} strokeWidth={2} />
         </View>
 
         <Text style={styles.title}>Autorisation GPS</Text>
@@ -45,7 +46,9 @@ export default function GpsPermissionScreen() {
 
         <View style={styles.card}>
           <View style={styles.bulletItem}>
-            <Text style={styles.bulletCheck}>✓</Text>
+            <View style={[styles.bulletChip, { backgroundColor: AppTheme.primaryLight }]}>
+              <MapPin size={16} color={AppTheme.primary} strokeWidth={2} />
+            </View>
             <View style={styles.bulletContent}>
               <Text style={styles.bulletTitle}>Validation des étapes</Text>
               <Text style={styles.bulletDesc}>
@@ -55,7 +58,9 @@ export default function GpsPermissionScreen() {
           </View>
 
           <View style={styles.bulletItem}>
-            <Text style={styles.bulletCheck}>✓</Text>
+            <View style={[styles.bulletChip, { backgroundColor: AppTheme.trackingLight }]}>
+              <Navigation size={16} color={AppTheme.tracking} strokeWidth={2} />
+            </View>
             <View style={styles.bulletContent}>
               <Text style={styles.bulletTitle}>Suivi en arrière-plan</Text>
               <Text style={styles.bulletDesc}>
@@ -65,7 +70,9 @@ export default function GpsPermissionScreen() {
           </View>
 
           <View style={styles.bulletItem}>
-            <Text style={styles.bulletCheck}>✓</Text>
+            <View style={[styles.bulletChip, { backgroundColor: AppTheme.warningLight }]}>
+              <Fuel size={16} color={AppTheme.warning} strokeWidth={2} />
+            </View>
             <View style={styles.bulletContent}>
               <Text style={styles.bulletTitle}>Déclaration carburant</Text>
               <Text style={styles.bulletDesc}>
@@ -98,26 +105,23 @@ export default function GpsPermissionScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: AppTheme.background,
   },
   content: {
-    padding: 24,
+    padding: AppSpacing.xxl,
     flexGrow: 1,
     justifyContent: 'space-between',
   },
   iconContainer: {
     width: 72,
     height: 72,
-    borderRadius: 36,
+    borderRadius: AppRadius.pill,
     backgroundColor: AppTheme.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'center',
     marginTop: 20,
     marginBottom: 20,
-  },
-  icon: {
-    fontSize: 32,
   },
   title: {
     fontSize: 26,
@@ -134,22 +138,26 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: AppTheme.card,
+    borderRadius: AppRadius.xl,
+    padding: AppSpacing.xl,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: AppTheme.border,
     marginBottom: 24,
+    ...AppShadow.card,
   },
   bulletItem: {
     flexDirection: 'row',
     marginBottom: 16,
   },
-  bulletCheck: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: AppTheme.success,
+  bulletChip: {
+    width: 30,
+    height: 30,
+    borderRadius: AppRadius.pill,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
+    marginTop: 1,
   },
   bulletContent: {
     flex: 1,
@@ -172,6 +180,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   skipButton: {
-    borderColor: '#CBD5E1',
+    borderColor: AppTheme.border,
   },
 });

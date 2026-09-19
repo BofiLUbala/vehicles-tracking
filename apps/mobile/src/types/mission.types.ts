@@ -59,3 +59,24 @@ export interface Mission {
   steps: MissionStep[];
   completedStepsCount?: number;
 }
+
+export interface MissionTracePosition {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  speed: number | null;
+  heading: number | null;
+  recordedAt: string;
+}
+
+export interface MissionTrace {
+  missionId: string;
+  vehicleId: string;
+  driverId: string;
+  status: MissionStatus;
+  startedAt: string | null;
+  lastPositionAt: string | null;
+  totalPoints: number;
+  totalDistanceMeters: number;
+  positions: MissionTracePosition[];
+}

@@ -57,15 +57,25 @@ export class FilesService implements OnModuleInit {
 
   async onModuleInit() {
     // Crée le bucket s'il n'existe pas encore (idempotent) — pratique en dev/CI contre MinIO frais.
-    try {
-      await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }));
-    } catch {
+    // Borne temporelle stricte : un endpoint S3 injoignable (résolution lente, pare-feu, MinIO
+    // absent) ne doit jamais bloquer le démarrage de l'API.
+    const bootCheck = (async () => {
       try {
-        await this.s3.send(new CreateBucketCommand({ Bucket: this.bucket }));
-      } catch (err) {
-        this.logger.warn(`Impossible de créer/vérifier le bucket S3 "${this.bucket}" : ${(err as Error).message}`);
+        await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      } catch {
+        try {
+          await this.s3.send(new CreateBucketCommand({ Bucket: this.bucket }));
+        } catch (err) {
+          this.logger.warn(`Impossible de créer/vérifier le bucket S3 "${this.bucket}" : ${(err as Error).message}`);
+        }
       }
-    }
+    })();
+    await Promise.race([
+      bootCheck,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout de vérification du bucket S3')), 5_000)),
+    ]).catch((err) => {
+      this.logger.warn(`Vérification du bucket S3 abandonnée : ${(err as Error).message}`);
+    });
   }
 
   private extensionFor(mimeType: string): string {

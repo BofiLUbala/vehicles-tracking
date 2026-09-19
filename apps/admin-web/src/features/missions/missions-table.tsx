@@ -1,8 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
-import { MISSION_STATUS_BADGE_VARIANT, MISSION_STATUS_LABELS } from '@/features/missions/status-labels';
+import { ChevronRight } from 'lucide-react';
+import { StatusBadge } from '@/components/status-badge';
+import { EmptyState } from '@/components/empty-state';
+import { missionTone } from '@/features/dashboard/tones';
+import { MISSION_STATUS_LABELS } from '@/features/missions/status-labels';
 import type { DriverRef, MissionDto, VehicleRef } from '@/features/missions/types';
 
 export interface MissionsTableProps {
@@ -23,48 +26,54 @@ function formatDate(iso: string | null): string {
 
 export function MissionsTable({ missions, driversById, vehiclesById }: MissionsTableProps) {
   if (missions.length === 0) {
-    return <p className="p-4 text-sm text-muted-foreground">Aucune mission pour ces filtres.</p>;
+    return <EmptyState title="Aucune mission" description="Aucune mission pour ces filtres." className="py-14" />;
   }
 
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-            <th className="px-3 py-2">Statut</th>
-            <th className="px-3 py-2">Chauffeur</th>
-            <th className="px-3 py-2">Véhicule</th>
-            <th className="px-3 py-2">Début planifié</th>
-            <th className="px-3 py-2">Fin planifiée</th>
-            <th className="px-3 py-2">Étapes</th>
-            <th className="px-3 py-2" />
+          <tr className="border-b border-border text-left text-2xs uppercase tracking-wider text-muted-foreground">
+            <th className="px-4 py-3">Statut</th>
+            <th className="px-4 py-3">Chauffeur</th>
+            <th className="px-4 py-3">Véhicule</th>
+            <th className="px-4 py-3">Début planifié</th>
+            <th className="px-4 py-3">Fin planifiée</th>
+            <th className="px-4 py-3 text-center">Étapes</th>
+            <th className="px-4 py-3" />
           </tr>
         </thead>
         <tbody>
-          {missions.map((mission) => (
-            <tr key={mission.id} className="border-b border-border last:border-0">
-              <td className="px-3 py-2">
-                <Badge variant={MISSION_STATUS_BADGE_VARIANT[mission.status] ?? 'outline'}>
-                  {MISSION_STATUS_LABELS[mission.status] ?? mission.status}
-                </Badge>
-              </td>
-              <td className="px-3 py-2">
-                {(() => {
-                  const driver = driversById?.[mission.driverId];
-                  return driver ? `${driver.firstName} ${driver.lastName}` : mission.driverId;
-                })()}
-              </td>
-              <td className="px-3 py-2">{vehiclesById?.[mission.vehicleId]?.plateNumber ?? mission.vehicleId}</td>
-              <td className="px-3 py-2">{formatDate(mission.plannedStart)}</td>
-              <td className="px-3 py-2">{formatDate(mission.plannedEnd)}</td>
-              <td className="px-3 py-2">{mission.steps.length}</td>
-              <td className="px-3 py-2">
-                <Link href={`/missions/${mission.id}`} className="text-sm font-medium text-primary underline">
-                  Détail
-                </Link>
-              </td>
-            </tr>
-          ))}
+          {missions.map((mission) => {
+            const driver = driversById?.[mission.driverId];
+            const vehicle = vehiclesById?.[mission.vehicleId];
+            return (
+              <tr key={mission.id} className="group border-b border-border transition-colors last:border-0 hover:bg-muted/40">
+                <td className="px-4 py-3">
+                  <StatusBadge tone={missionTone(mission.status)} dot>
+                    {MISSION_STATUS_LABELS[mission.status] ?? mission.status}
+                  </StatusBadge>
+                </td>
+                <td className="px-4 py-3 font-medium text-foreground">
+                  {driver ? `${driver.firstName} ${driver.lastName}` : mission.driverId}
+                </td>
+                <td className="px-4 py-3 tabular-nums">
+                  {vehicle?.plateNumber ?? mission.vehicleId}
+                </td>
+                <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(mission.plannedStart)}</td>
+                <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(mission.plannedEnd)}</td>
+                <td className="px-4 py-3 text-center tabular-nums text-muted-foreground">{mission.steps.length}</td>
+                <td className="px-4 py-3 text-right">
+                  <Link
+                    href={`/missions/${mission.id}`}
+                    className="inline-flex items-center gap-0.5 text-sm font-semibold text-primary transition-colors hover:text-primary/80 group-hover:underline"
+                  >
+                    Détail <ChevronRight className="h-4 w-4" />
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

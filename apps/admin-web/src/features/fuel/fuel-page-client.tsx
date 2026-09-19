@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { ErrorState, LoadingSkeleton } from '@/components/empty-state';
 import { FuelFiltersBar } from '@/features/fuel/fuel-filters';
 import { FuelTable } from '@/features/fuel/fuel-table';
 import { VehicleFuelPanel } from '@/features/fuel/vehicle-fuel-panel';
@@ -19,22 +20,20 @@ export function FuelPageClient() {
   });
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">Carburant</h1>
+    <div className="flex flex-col gap-5 p-6 lg:p-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-bold tracking-tight">Carburant</h1>
+        <p className="text-sm text-muted-foreground">
+          Suivez les pleins, les coûts et la consommation de votre flotte.
+        </p>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Filtres</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <FuelFiltersBar filters={filters} onChange={setFilters} />
-        </CardContent>
-      </Card>
+      <FuelFiltersBar filters={filters} onChange={setFilters} />
 
       <Card>
         <CardContent className="p-0">
-          {isLoading && <p className="p-4 text-sm text-muted-foreground">Chargement des pleins…</p>}
-          {isError && <p className="p-4 text-sm text-destructive">Impossible de charger les pleins.</p>}
+          {isLoading && <LoadingSkeleton className="h-64" />}
+          {isError && <ErrorState message="Impossible de charger les pleins." />}
           {data && (
             <FuelTable records={data} onSelectVehicle={setSelectedVehicleId} selectedVehicleId={selectedVehicleId} />
           )}

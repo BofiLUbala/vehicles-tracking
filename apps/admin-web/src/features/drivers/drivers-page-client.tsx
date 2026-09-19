@@ -4,8 +4,9 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ErrorState, LoadingSkeleton } from '@/components/empty-state';
 import { AssignVehicleDialog } from '@/features/drivers/assign-vehicle-dialog';
 import {
   assignVehicleToDriver,
@@ -126,9 +127,14 @@ export function DriversPageClient() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Chauffeurs</h1>
+    <div className="flex flex-col gap-5 p-6 lg:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight">Chauffeurs</h1>
+          <p className="text-sm text-muted-foreground">
+            Gérez les chauffeurs de votre flotte, leurs affectations et leurs appareils.
+          </p>
+        </div>
         <Button
           type="button"
           onClick={() => {
@@ -140,19 +146,12 @@ export function DriversPageClient() {
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Filtres</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DriversFiltersBar filters={filters} onChange={setFilters} />
-        </CardContent>
-      </Card>
+      <DriversFiltersBar filters={filters} onChange={setFilters} />
 
       <Card>
         <CardContent className="p-0">
-          {isLoading && <p className="p-4 text-sm text-muted-foreground">Chargement des chauffeurs…</p>}
-          {isError && <p className="p-4 text-sm text-destructive">Impossible de charger les chauffeurs.</p>}
+          {isLoading && <LoadingSkeleton className="h-64" />}
+          {isError && <ErrorState message="Impossible de charger les chauffeurs." />}
           {data && (
             <DriversTable
               drivers={filteredDrivers}

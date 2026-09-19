@@ -4,6 +4,7 @@ import { ACCESS_COOKIE, REFRESH_COOKIE } from '@/lib/session';
 // Toutes les routes du groupe (dashboard) nécessitent une session. La liste est explicite
 // (plutôt qu'un matcher générique) pour rester lisible à mesure que de nouveaux écrans arrivent.
 const PROTECTED_PREFIXES = [
+  '/',
   '/tracking',
   '/missions',
   '/drivers',
@@ -18,7 +19,10 @@ const PROTECTED_PREFIXES = [
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  const isProtected = PROTECTED_PREFIXES.some((prefix) => {
+    if (prefix === '/') return pathname === '/';
+    return pathname === prefix || pathname.startsWith(`${prefix}/`);
+  });
   if (!isProtected) {
     return NextResponse.next();
   }
@@ -35,6 +39,7 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
+    '/',
     '/tracking/:path*',
     '/missions/:path*',
     '/drivers/:path*',

@@ -107,7 +107,7 @@ export class ReportsService {
         vehicle: true,
         steps: { include: { location: true }, orderBy: { order: 'asc' } },
       },
-      orderBy: { plannedStart: 'desc' },
+      orderBy: [{ plannedStart: 'desc' }, { id: 'asc' }],
       skip: paging.offset,
       take: paging.limit + 1,
     });
@@ -175,7 +175,7 @@ export class ReportsService {
     const records = await this.prisma.fuelRecord.findMany({
       where,
       include: { vehicle: true, driver: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       skip: paging.offset,
       take: paging.limit + 1,
     });
@@ -239,7 +239,7 @@ export class ReportsService {
     const positions = await this.prisma.gpsPosition.findMany({
       where,
       include: { vehicle: true },
-      orderBy: { recordedAt: 'desc' },
+      orderBy: [{ recordedAt: 'desc' }, { id: 'asc' }],
       skip: paging.offset,
       take: paging.limit + 1,
     });

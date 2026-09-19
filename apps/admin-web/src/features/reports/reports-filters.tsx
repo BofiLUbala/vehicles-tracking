@@ -1,5 +1,6 @@
 'use client';
 
+import { FilterBar, FilterField } from '@/components/filter-bar';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import type { FuelReportFilters, MissionReportFilters, MissionReportStatus } from '@/features/reports/types';
@@ -40,37 +41,31 @@ export function MissionReportFiltersBar({ filters, onChange }: MissionReportFilt
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-mission-from" className="text-xs text-muted-foreground">Du</label>
-        <Input id="report-mission-from" type="date" value={filters.from ?? ''} onChange={(e) => set('from', e.target.value)} />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-mission-to" className="text-xs text-muted-foreground">Au</label>
-        <Input id="report-mission-to" type="date" value={filters.to ?? ''} onChange={(e) => set('to', e.target.value)} />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-mission-vehicle" className="text-xs text-muted-foreground">Véhicule (id)</label>
-        <Input id="report-mission-vehicle" value={filters.vehicleId ?? ''} onChange={(e) => set('vehicleId', e.target.value)} placeholder="uuid" />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-mission-driver" className="text-xs text-muted-foreground">Chauffeur (id)</label>
-        <Input id="report-mission-driver" value={filters.driverId ?? ''} onChange={(e) => set('driverId', e.target.value)} placeholder="uuid" />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-mission-status" className="text-xs text-muted-foreground">Statut</label>
-        <Select id="report-mission-status" value={filters.status ?? ''} onChange={(e) => set('status', e.target.value)}>
+    <FilterBar>
+      <FilterField label="Du">
+        <Input id="report-mission-from" aria-label="Du" type="date" value={filters.from ?? ''} onChange={(e) => set('from', e.target.value)} />
+      </FilterField>
+      <FilterField label="Au">
+        <Input id="report-mission-to" aria-label="Au" type="date" value={filters.to ?? ''} onChange={(e) => set('to', e.target.value)} />
+      </FilterField>
+      <FilterField label="Véhicule (id)">
+        <Input id="report-mission-vehicle" aria-label="Véhicule (id)" value={filters.vehicleId ?? ''} onChange={(e) => set('vehicleId', e.target.value)} placeholder="uuid" />
+      </FilterField>
+      <FilterField label="Chauffeur (id)">
+        <Input id="report-mission-driver" aria-label="Chauffeur (id)" value={filters.driverId ?? ''} onChange={(e) => set('driverId', e.target.value)} placeholder="uuid" />
+      </FilterField>
+      <FilterField label="Statut">
+        <Select id="report-mission-status" aria-label="Statut" value={filters.status ?? ''} onChange={(e) => set('status', e.target.value)}>
           <option value="">Tous</option>
           {MISSION_STATUSES.map((s) => (
             <option key={s} value={s}>{MISSION_STATUS_LABELS[s]}</option>
           ))}
         </Select>
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-mission-location" className="text-xs text-muted-foreground">Point géo (id)</label>
-        <Input id="report-mission-location" value={filters.locationId ?? ''} onChange={(e) => set('locationId', e.target.value)} placeholder="uuid" />
-      </div>
-    </div>
+      </FilterField>
+      <FilterField label="Point géo (id)">
+        <Input id="report-mission-location" aria-label="Point géo (id)" value={filters.locationId ?? ''} onChange={(e) => set('locationId', e.target.value)} placeholder="uuid" />
+      </FilterField>
+    </FilterBar>
   );
 }
 
@@ -86,23 +81,19 @@ export function FuelReportFiltersBar({ filters, onChange }: FuelReportFiltersPro
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-fuel-from" className="text-xs text-muted-foreground">Du</label>
-        <Input id="report-fuel-from" type="date" value={filters.from ?? ''} onChange={(e) => set('from', e.target.value)} />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-fuel-to" className="text-xs text-muted-foreground">Au</label>
-        <Input id="report-fuel-to" type="date" value={filters.to ?? ''} onChange={(e) => set('to', e.target.value)} />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-fuel-vehicle" className="text-xs text-muted-foreground">Véhicule (id)</label>
-        <Input id="report-fuel-vehicle" value={filters.vehicleId ?? ''} onChange={(e) => set('vehicleId', e.target.value)} placeholder="uuid" />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-fuel-driver" className="text-xs text-muted-foreground">Chauffeur (id)</label>
-        <Input id="report-fuel-driver" value={filters.driverId ?? ''} onChange={(e) => set('driverId', e.target.value)} placeholder="uuid" />
-      </div>
-    </div>
+    <FilterBar>
+      <FilterField label="Du">
+        <Input id="report-fuel-from" aria-label="Du" type="date" value={filters.from ?? ''} onChange={(e) => set('from', e.target.value)} />
+      </FilterField>
+      <FilterField label="Au">
+        <Input id="report-fuel-to" aria-label="Au" type="date" value={filters.to ?? ''} onChange={(e) => set('to', e.target.value)} />
+      </FilterField>
+      <FilterField label="Véhicule (id)">
+        <Input id="report-fuel-vehicle" aria-label="Véhicule (id)" value={filters.vehicleId ?? ''} onChange={(e) => set('vehicleId', e.target.value)} placeholder="uuid" />
+      </FilterField>
+      <FilterField label="Chauffeur (id)">
+        <Input id="report-fuel-driver" aria-label="Chauffeur (id)" value={filters.driverId ?? ''} onChange={(e) => set('driverId', e.target.value)} placeholder="uuid" />
+      </FilterField>
+    </FilterBar>
   );
 }

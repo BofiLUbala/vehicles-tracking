@@ -1,6 +1,7 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/empty-state';
+import { StatusBadge, type StatusTone } from '@/components/status-badge';
 import type { AdminUserDto } from '@/features/users/types';
 
 export interface UsersTableProps {
@@ -21,41 +22,54 @@ const ROLE_LABELS: Record<string, string> = {
   DRIVER: 'Chauffeur',
 };
 
+const ROLE_TONES: Record<string, StatusTone> = {
+  SUPER_ADMIN: 'navy',
+  ADMIN: 'info',
+  MANAGER: 'neutral',
+  DRIVER: 'success',
+};
+
 export function UsersTable({ users }: UsersTableProps) {
   if (users.length === 0) {
-    return <p className="p-4 text-sm text-muted-foreground">Aucun utilisateur.</p>;
+    return <EmptyState title="Aucun utilisateur" description="Aucun utilisateur." className="py-14" />;
   }
 
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-            <th className="px-3 py-2">Email</th>
-            <th className="px-3 py-2">Nom</th>
-            <th className="px-3 py-2">Rôle</th>
-            <th className="px-3 py-2">Statut</th>
-            <th className="px-3 py-2">Créé le</th>
+          <tr className="border-b border-border text-left text-2xs uppercase tracking-wider text-muted-foreground">
+            <th className="px-4 py-3">Email</th>
+            <th className="px-4 py-3">Nom</th>
+            <th className="px-4 py-3">Rôle</th>
+            <th className="px-4 py-3">Statut</th>
+            <th className="px-4 py-3">Créé le</th>
           </tr>
         </thead>
         <tbody>
           {users.map((user) => (
-            <tr key={user.id} className="border-b border-border last:border-0">
-              <td className="px-3 py-2">{user.email}</td>
-              <td className="px-3 py-2">
+            <tr key={user.id} className="border-b border-border transition-colors last:border-0 hover:bg-muted/40">
+              <td className="px-4 py-3 font-medium text-foreground">{user.email}</td>
+              <td className="px-4 py-3">
                 {user.firstName || user.lastName ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : '—'}
               </td>
-              <td className="px-3 py-2">
-                <Badge variant="outline">{ROLE_LABELS[user.role.name] ?? user.role.name}</Badge>
+              <td className="px-4 py-3">
+                <StatusBadge tone={ROLE_TONES[user.role.name] ?? 'neutral'}>
+                  {ROLE_LABELS[user.role.name] ?? user.role.name}
+                </StatusBadge>
               </td>
-              <td className="px-3 py-2">
+              <td className="px-4 py-3">
                 {user.isActive ? (
-                  <Badge variant="secondary">Actif</Badge>
+                  <StatusBadge tone="success" dot>
+                    Actif
+                  </StatusBadge>
                 ) : (
-                  <Badge variant="destructive">Désactivé</Badge>
+                  <StatusBadge tone="danger" dot>
+                    Désactivé
+                  </StatusBadge>
                 )}
               </td>
-              <td className="px-3 py-2">{formatDate(user.createdAt)}</td>
+              <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(user.createdAt)}</td>
             </tr>
           ))}
         </tbody>

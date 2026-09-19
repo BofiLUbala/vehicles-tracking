@@ -1,8 +1,17 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { LOCATION_TYPE_LABELS, LOCATION_STATUS_LABELS, type LocationDto } from '@/features/locations/types';
+import { EmptyState } from '@/components/empty-state';
+import { StatusBadge, type StatusTone } from '@/components/status-badge';
+import { LOCATION_TYPE_LABELS, LOCATION_STATUS_LABELS, type LocationDto, type LocationType } from '@/features/locations/types';
+
+const LOCATION_TYPE_TONES: Record<LocationType, StatusTone> = {
+  COLLECTION: 'navy',
+  DROPOFF: 'neutral',
+  LANDFILL: 'warning',
+  TRANSFER_CENTER: 'info',
+  AUTHORIZED_GAS_STATION: 'warning',
+};
 
 export interface LocationsTableProps {
   locations: LocationDto[];
@@ -13,38 +22,40 @@ export interface LocationsTableProps {
 
 export function LocationsTable({ locations, onEdit, onDelete, onGenerateQr }: LocationsTableProps) {
   if (locations.length === 0) {
-    return <p className="p-4 text-sm text-muted-foreground">Aucun point géographique enregistré.</p>;
+    return <EmptyState title="Aucun point géographique" description="Aucun point géographique enregistré." className="py-14" />;
   }
 
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-            <th className="px-3 py-2">Nom</th>
-            <th className="px-3 py-2">Type</th>
-            <th className="px-3 py-2">Adresse</th>
-            <th className="px-3 py-2">Rayon autorisé</th>
-            <th className="px-3 py-2">Statut</th>
-            <th className="px-3 py-2">Actions</th>
+          <tr className="border-b border-border text-left text-2xs uppercase tracking-wider text-muted-foreground">
+            <th className="px-4 py-3">Nom</th>
+            <th className="px-4 py-3">Type</th>
+            <th className="px-4 py-3">Adresse</th>
+            <th className="px-4 py-3">Rayon autorisé</th>
+            <th className="px-4 py-3">Statut</th>
+            <th className="px-4 py-3">Actions</th>
           </tr>
         </thead>
         <tbody>
           {locations.map((location) => (
-            <tr key={location.id} className="border-b border-border last:border-0">
-              <td className="px-3 py-2 font-medium">{location.name}</td>
-              <td className="px-3 py-2">
-                <Badge variant="outline">{LOCATION_TYPE_LABELS[location.type] ?? location.type}</Badge>
+            <tr key={location.id} className="border-b border-border transition-colors last:border-0 hover:bg-muted/40">
+              <td className="px-4 py-3 font-medium text-foreground">{location.name}</td>
+              <td className="px-4 py-3">
+                <StatusBadge tone={LOCATION_TYPE_TONES[location.type] ?? 'neutral'}>
+                  {LOCATION_TYPE_LABELS[location.type] ?? location.type}
+                </StatusBadge>
               </td>
-              <td className="px-3 py-2">{location.address ?? '—'}</td>
-              <td className="px-3 py-2">{location.allowedRadius} m</td>
-              <td className="px-3 py-2">
-                <Badge variant={location.status === 'ACTIVE' ? 'secondary' : 'destructive'}>
+              <td className="px-4 py-3">{location.address ?? '—'}</td>
+              <td className="px-4 py-3 tabular-nums">{location.allowedRadius} m</td>
+              <td className="px-4 py-3">
+                <StatusBadge tone={location.status === 'ACTIVE' ? 'success' : 'danger'} dot>
                   {LOCATION_STATUS_LABELS[location.status] ?? location.status}
-                </Badge>
+                </StatusBadge>
               </td>
-              <td className="px-3 py-2">
-                <div className="flex gap-2">
+              <td className="px-4 py-3">
+                <div className="flex flex-wrap gap-1.5">
                   <Button type="button" variant="outline" size="sm" onClick={() => onEdit(location)}>
                     Modifier
                   </Button>
