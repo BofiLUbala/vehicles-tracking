@@ -13,7 +13,17 @@ import { RegionSelector } from '@/features/geo/region-selector';
 import { EMPTY_SELECTION, resolveTarget, selectionPath, type RegionSelection } from '@/features/geo/selection';
 import { presetFor, type MapViewMode } from '@/features/geo/view-mode';
 import { isStyleUsable, syncCamera } from '@/features/geo/map-camera';
-import { MAP_STYLE_URL } from '@/features/geo/map-style';
+import {
+  MAP_BASE_STYLE_OPTIONS,
+  MAP_STYLE_URL,
+  STYLE_SWITCHER_AVAILABLE,
+  TRAFFIC_AVAILABLE,
+  describeMapError,
+  ensureSatelliteBaseLayer,
+  setTrafficOverlay,
+  styleUrlFor,
+  type MapBaseStyle,
+} from '@/features/geo/map-style';
 import { cn } from '@/lib/utils';
 
 const TRACE_SOURCE_ID = 'mission-trace';
@@ -44,6 +54,13 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
   const [region, setRegion] = useState<RegionSelection>(EMPTY_SELECTION);
   const [viewMode, setViewMode] = useState<MapViewMode>('auto');
   const [regionPanelOpen, setRegionPanelOpen] = useState(true);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [trafficOn, setTrafficOn] = useState(false);
+  const [baseStyle, setBaseStyle] = useState<MapBaseStyle>('street');
+  // Incrémenté à chaque style effectivement chargé. `setStyle` vide les sources/couches
+  // personnalisées (trace, étapes, trafic, satellite) : cet « epoch » relance leur réinstallation.
+  const [styleEpoch, setStyleEpoch] = useState(0);
+  const appliedStyleRef = useRef<MapBaseStyle>('street');
   const fittedOnceRef = useRef(false);
   const previousMissionIdRef = useRef<string | null>(null);
 
@@ -141,12 +158,20 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
     });
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     const markReady = () => {
-      if (isStyleUsable(map)) {
-        mapReadyRef.current = true;
-        setMapReady(true);
-      }
+      // `styledata` se déclenche plusieurs fois par style : n'incrémenter l'epoch qu'une fois,
+      // au passage « pas prêt -> prêt », sinon les effets de réinstallation boucleraient.
+      if (mapReadyRef.current || !isStyleUsable(map)) return;
+      mapReadyRef.current = true;
+      setMapReady(true);
+      setStyleEpoch((e) => e + 1);
     };
     map.on('styledata', markReady);
+    // Panne du fond de carte (clé refusée, quota, réseau) : bandeau explicite, le reste du tableau de
+    // bord et le suivi temps réel (marqueurs, panneau) restent utilisables.
+    map.on('error', (e) => {
+      const message = describeMapError((e as { error?: unknown }).error);
+      if (message) setMapError(message);
+    });
     mapRef.current = map;
 
     return () => {
@@ -156,12 +181,30 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
     };
   }, []);
 
+  // Changement de fond de carte : `setStyle` conserve centre/zoom/pitch et les marqueurs (DOM).
+  // Aucun rechargement de page, aucune incidence sur la trace réelle ou le véhicule sélectionné.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || appliedStyleRef.current === baseStyle) return;
+    appliedStyleRef.current = baseStyle;
+    mapReadyRef.current = false;
+    setMapReady(false);
+    setMapError(null);
+    map.setStyle(styleUrlFor(baseStyle));
+  }, [baseStyle]);
+
+  // Le style hybride TomTom n'affiche pas l'imagerie satellite sans cette couche.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && mapReady) ensureSatelliteBaseLayer(map);
+  }, [mapReady, styleEpoch]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     if (regionTarget) fittedOnceRef.current = true;
     syncCamera(map, preset, regionTarget);
-  }, [mapReady, preset, regionKey]);
+  }, [mapReady, preset, regionKey, styleEpoch]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -189,7 +232,9 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
 
       const el = marker.getElement() as HTMLElement;
       const isSelected = selectedVehicleId === vehicle.id;
-      el.className = '';
+      // Ne jamais écraser `className` : MapLibre y pose `maplibregl-marker`, qui fournit le
+      // `position:absolute` du marqueur. Sans lui les marqueurs retombent dans le flux normal et
+      // se décalent les uns par rapport aux autres dès qu'il y a plus d'un véhicule positionné.
       el.style.width = isSelected ? '20px' : '16px';
       el.style.height = isSelected ? '20px' : '16px';
       el.style.borderRadius = '50%';
@@ -225,12 +270,36 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
 
     const positioned = vehicles.filter((v): v is typeof v & { position: NonNullable<typeof v.position> } => !!v.position);
     if (!fittedOnceRef.current && positioned.length > 0) {
-      fittedOnceRef.current = true;
       const bounds = new maplibregl.LngLatBounds();
       positioned.forEach((v) => bounds.extend([v.position.lng, v.position.lat]));
-      map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 0 });
+      // `fitBounds` échoue (caméra indéfinie -> TypeError) quand le rembourrage dépasse la taille du
+      // conteneur, ce qui arrive sur fenêtre étroite. On borne le rembourrage et on ne marque le
+      // cadrage comme fait que s'il a réussi, pour réessayer quand le conteneur grandit.
+      const container = map.getContainer();
+      const maxPadding = Math.floor(Math.min(container.clientWidth, container.clientHeight) / 2) - 8;
+      const padding = Math.max(0, Math.min(60, maxPadding));
+      const camera = maxPadding > 0 ? map.cameraForBounds(bounds, { padding, maxZoom: 14 }) : undefined;
+      if (camera) {
+        fittedOnceRef.current = true;
+        map.jumpTo(camera);
+      }
     }
   }, [vehicles, mapReady, selectedVehicleId]);
+
+  // Sélection d'un véhicule : recentrage sur sa dernière position connue.
+  useEffect(() => {
+    const map = mapRef.current;
+    const pos = selectedVehicle?.position;
+    if (!map || !mapReady || !pos) return;
+    map.flyTo({ center: [pos.lng, pos.lat], zoom: Math.max(map.getZoom(), 13), duration: 600 });
+    // Uniquement au changement de sélection : les mises à jour live ne doivent pas voler la caméra.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVehicleId, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && mapReady) setTrafficOverlay(map, trafficOn);
+  }, [trafficOn, mapReady, styleEpoch]);
 
   // Manage trace drawing on toggle
   useEffect(() => {
@@ -243,7 +312,7 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
         if (map.getSource(TRACE_SOURCE_ID)) map.removeSource(TRACE_SOURCE_ID);
       }
     }
-  }, [traceVisible, drawTrace]);
+  }, [traceVisible, drawTrace, styleEpoch]);
 
   // Reset trace state when selecting a different vehicle
   useEffect(() => {
@@ -264,8 +333,12 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
   }, [selectedVehicleId, vehicles]);
 
   return (
-    <div className="flex h-full w-full gap-3 p-3">
-      <div className={cn('relative min-w-0 flex-1', selectedVehicle ? 'xl:basis-3/4' : '')}>
+    // En dessous de `xl`, le panneau véhicule passait en `w-full` à côté d'une carte `flex-1` :
+    // la carte se réduisait à presque rien et ses surcouches absolues (légende, sélecteur de fond)
+    // se superposaient au panneau, rendant les deux illisibles. On empile donc verticalement sous
+    // `xl` et on garde la disposition en colonnes au-dessus.
+    <div className="flex h-full w-full flex-col gap-3 p-3 xl:flex-row">
+      <div className={cn('relative min-h-[26rem] min-w-0 flex-1', selectedVehicle ? 'xl:basis-3/4' : '')}>
         <div ref={containerRef} className="h-full w-full overflow-hidden rounded-2xl border border-border shadow-card" data-testid="maplibre-container" />
 
         {selectedVehicle && (
@@ -305,6 +378,38 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
             )}
           </div>
           <TrackingLegend />
+          {STYLE_SWITCHER_AVAILABLE && (
+            <label className="pointer-events-auto flex items-center gap-2 self-start rounded-xl border border-border bg-card/95 px-3 py-2 text-xs font-semibold shadow-card backdrop-blur">
+              <span className="text-muted-foreground">Fond</span>
+              <select
+                aria-label="Fond de carte"
+                value={baseStyle}
+                onChange={(e) => setBaseStyle(e.target.value as MapBaseStyle)}
+                className="bg-transparent text-foreground outline-none"
+              >
+                {MAP_BASE_STYLE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {TRAFFIC_AVAILABLE && (
+            <button
+              type="button"
+              aria-pressed={trafficOn}
+              onClick={() => setTrafficOn((v) => !v)}
+              className="pointer-events-auto self-start rounded-xl border border-border bg-card/95 px-3.5 py-2 text-xs font-semibold shadow-card backdrop-blur"
+            >
+              Trafic {trafficOn ? 'activé' : 'désactivé'}
+            </button>
+          )}
+          {mapError && (
+            <div role="alert" className="pointer-events-auto rounded-xl border border-danger/30 bg-card/95 px-3.5 py-2.5 text-xs font-semibold text-danger shadow-card backdrop-blur">
+              Fond de carte indisponible — {mapError} Le suivi des véhicules reste actif.
+            </div>
+          )}
           {!connected && (
             <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-danger/30 bg-card/95 px-3.5 py-2.5 text-xs font-semibold text-danger shadow-card backdrop-blur">
               <ConnectionStatus state="offline" />
@@ -324,7 +429,7 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
 
       <div
         className={cn(
-          'w-full shrink-0 flex-col gap-3 overflow-visible',
+          'w-full flex-col gap-3 overflow-visible xl:shrink-0',
           selectedVehicle ? 'flex xl:w-[25%] xl:min-w-[22rem]' : 'hidden w-0',
         )}
       >

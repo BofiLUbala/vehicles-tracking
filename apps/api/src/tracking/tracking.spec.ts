@@ -145,6 +145,32 @@ describe('TrackingService (intégration DB réelle)', () => {
     await expect(tracking.ingestSingle(otherDriver.id, DEMO_ORG_ID, dto)).rejects.toMatchObject({ status: 403 });
   });
 
+  // Régression d'intégrité : les points en file hors-ligne d'un chauffeur A ne doivent jamais devenir
+  // ceux d'un chauffeur B. Sans propriété déclarée, B affecté au MÊME véhicule les aurait acceptés.
+  it("rejette (403) une position dont le chauffeur déclaré n'est pas le chauffeur authentifié, même sur un véhicule partagé", async () => {
+    const { driver: a, vehicle } = await setupDriverAndVehicle();
+    const { driver: b } = await setupDriverAndVehicle();
+    await drivers.assignVehicle(DEMO_ORG_ID, b.id, vehicle.id); // B détient désormais le véhicule qu'A utilisait
+
+    const queuedByA = positionPayload({ vehicleId: vehicle.id, driverId: a.id });
+    await expect(tracking.ingestSingle(b.id, DEMO_ORG_ID, queuedByA)).rejects.toMatchObject({ status: 403 });
+
+    const results = await tracking.ingestBatch(b.id, DEMO_ORG_ID, [queuedByA]);
+    expect(results[0].status).toBe('rejected');
+    expect(results[0].reason).toMatch(/autre chauffeur/);
+
+    // Rien n'a été stocké au nom de B.
+    const stored = await prisma.gpsPosition.count({ where: { clientEventId: queuedByA.clientEventId } });
+    expect(stored).toBe(0);
+  });
+
+  it("accepte une position dont le chauffeur déclaré est bien le chauffeur authentifié", async () => {
+    const { driver, vehicle } = await setupDriverAndVehicle();
+    const dto = positionPayload({ vehicleId: vehicle.id, driverId: driver.id });
+    const position = await tracking.ingestSingle(driver.id, DEMO_ORG_ID, dto);
+    expect(position.driverId).toBe(driver.id);
+  });
+
   it('traite un lot avec résultats mixtes (créé/doublon/rejeté)', async () => {
     const { driver, vehicle } = await setupDriverAndVehicle();
     const { driver: otherDriver } = await setupDriverAndVehicle();

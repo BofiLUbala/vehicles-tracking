@@ -5,6 +5,8 @@ import { AuthApi } from '../api/auth.api';
 import { setForceLogoutHandler } from '../api/client';
 import { normalizePhoneNumber, isValidEmail, isValidPhoneNumber } from '../utils/phone';
 import { WebSocketService } from '../services/websocket.service';
+import { TrackingService } from '../services/tracking.service';
+import { ActiveOwner } from '../database/active-owner';
 
 export type AuthStatus = 'unknown' | 'unauthenticated' | 'otp_requested' | 'authenticated';
 
@@ -140,6 +142,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const establishSession = useCallback(async (session: { accessToken: string; refreshToken: string; driver: Driver }) => {
     await AuthService.saveTokens(session.accessToken, session.refreshToken);
     await AuthService.saveDriverProfile(session.driver);
+    // Propriétaire des files hors-ligne : posé AVANT tout enregistrement (GPS, validations, pleins).
+    ActiveOwner.set(session.driver.id);
     setDriver(session.driver);
     setStatus('authenticated');
     WebSocketService.connect();
@@ -153,6 +157,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {
       // Ignore network errors
     } finally {
+      // Arrêter le suivi AVANT de retirer le propriétaire : le worker GPS ne doit pas survivre à la
+      // session qui l'a démarré. Les points déjà en file restent attachés à leur chauffeur.
+      try {
+        await TrackingService.stopTracking();
+      } catch {
+        // le suivi peut déjà être arrêté
+      }
+      ActiveOwner.clear();
       await AuthService.clearTokens();
       WebSocketService.disconnect();
       setDriver(null);
@@ -175,6 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const storedDriver = await AuthService.getDriverProfile();
 
       if (accessToken && storedDriver) {
+        ActiveOwner.set(storedDriver.id);
         setDriver(storedDriver);
         setStatus('authenticated');
         WebSocketService.connect();
@@ -362,6 +375,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         code: code.trim(),
         newPassword,
       });
+      await AuthService.clearRememberedCredentials().catch(() => undefined);
       setOtpPurpose(null);
       setStatus('unauthenticated');
       setNotice('Mot de passe réinitialisé. Connectez-vous avec votre nouveau mot de passe.');

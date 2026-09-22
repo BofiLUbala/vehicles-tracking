@@ -10,13 +10,22 @@ import {
   VerifyPasswordResetDto,
 } from '../types/auth.types';
 
+/**
+ * Les endpoints qui déclenchent un envoi d'e-mail attendent la réponse SMTP côté backend
+ * (jusqu'à `SMTP_SEND_TIMEOUT_MS`, 30 s par défaut). Avec le délai global de 20 s, une livraison un
+ * peu lente était rapportée comme « Impossible de contacter le serveur » alors que l'API répondait
+ * normalement (défaut constaté en conditions réelles). Ce délai doit rester SUPÉRIEUR au budget
+ * d'envoi du backend.
+ */
+const EMAIL_SEND_TIMEOUT_MS = 45_000;
+
 export const AuthApi = {
   async requestOtp(payload: RequestOtpDto | string, channel?: 'WHATSAPP' | 'EMAIL'): Promise<void> {
     const body: RequestOtpDto =
       typeof payload === 'string'
         ? { phone: payload, channel: channel ?? 'WHATSAPP' }
         : payload;
-    await apiClient.post('/auth/otp/request', body);
+    await apiClient.post('/auth/otp/request', body, { timeout: EMAIL_SEND_TIMEOUT_MS });
   },
 
   async resendOtp(payload: ResendOtpDto | string, channel?: 'WHATSAPP' | 'EMAIL'): Promise<void> {
@@ -24,7 +33,7 @@ export const AuthApi = {
       typeof payload === 'string'
         ? { phone: payload, channel: channel ?? 'WHATSAPP' }
         : payload;
-    await apiClient.post('/auth/otp/resend', body);
+    await apiClient.post('/auth/otp/resend', body, { timeout: EMAIL_SEND_TIMEOUT_MS });
   },
 
   async verifyOtp(dto: VerifyOtpDto): Promise<AuthSession> {
@@ -47,7 +56,7 @@ export const AuthApi = {
   },
 
   async requestPasswordReset(payload: RequestPasswordResetDto): Promise<void> {
-    await apiClient.post('/auth/password-reset/request', payload);
+    await apiClient.post('/auth/password-reset/request', payload, { timeout: EMAIL_SEND_TIMEOUT_MS });
   },
 
   async verifyPasswordReset(payload: VerifyPasswordResetDto): Promise<{ message: string }> {

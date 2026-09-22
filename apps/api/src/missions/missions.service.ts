@@ -19,6 +19,11 @@ const CANCELLABLE_TERMINAL_STATUSES: MissionStatus[] = [
 ];
 
 const STEP_INCLUDE = { steps: { orderBy: { order: 'asc' as const } }, events: { orderBy: { createdAt: 'asc' as const } } };
+const MOBILE_INCLUDE = {
+  steps: { orderBy: { order: 'asc' as const }, include: { location: true, validations: true } },
+  events: { orderBy: { createdAt: 'asc' as const } },
+  vehicle: { select: { plateNumber: true } },
+};
 
 @Injectable()
 export class MissionsService {
@@ -27,8 +32,28 @@ export class MissionsService {
   async create(organizationId: string, dto: CreateMissionDto) {
     const driver = await this.prisma.driver.findFirst({ where: { id: dto.driverId, organizationId, deletedAt: null } });
     if (!driver) throw new NotFoundException('Chauffeur introuvable');
+    if (driver.status !== 'ACTIVE') {
+      throw new ConflictException('Ce chauffeur ne peut pas recevoir de mission dans son état actuel');
+    }
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId, organizationId, deletedAt: null } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+    if (vehicle.status !== 'AVAILABLE') {
+      throw new ConflictException('Ce véhicule ne peut pas recevoir de mission dans son état actuel');
+    }
+
+    const occupant = await this.prisma.mission.findFirst({
+      where: {
+        status: { in: ACTIVE_MISSION_STATUSES },
+        OR: [{ driverId: dto.driverId }, { vehicleId: dto.vehicleId }],
+      },
+    });
+    if (occupant) {
+      throw new ConflictException(
+        occupant.driverId === dto.driverId
+          ? 'Ce chauffeur est déjà affecté à une autre mission active'
+          : 'Ce véhicule est déjà affecté à une autre mission active',
+      );
+    }
 
     const orders = dto.steps.map((s) => s.order);
     if (new Set(orders).size !== orders.length) {
@@ -40,12 +65,13 @@ export class MissionsService {
       if (!location) throw new NotFoundException(`Lieu introuvable pour l'étape order=${step.order}`);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const mission = await tx.mission.create({
+    const mission = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.mission.create({
         data: {
           organizationId,
           driverId: dto.driverId,
           vehicleId: dto.vehicleId,
+          status: MissionStatus.ASSIGNED,
           plannedStart: dto.plannedStart ? new Date(dto.plannedStart) : undefined,
           plannedEnd: dto.plannedEnd ? new Date(dto.plannedEnd) : undefined,
         },
@@ -53,7 +79,7 @@ export class MissionsService {
 
       await tx.missionStep.createMany({
         data: dto.steps.map((s) => ({
-          missionId: mission.id,
+          missionId: created.id,
           locationId: s.locationId,
           order: s.order,
           actionType: s.actionType,
@@ -63,11 +89,21 @@ export class MissionsService {
       });
 
       await tx.missionEvent.create({
-        data: { missionId: mission.id, type: 'mission.created', payload: { driverId: dto.driverId, vehicleId: dto.vehicleId } },
+        data: { missionId: created.id, type: 'mission.created', payload: { driverId: dto.driverId, vehicleId: dto.vehicleId } },
       });
 
-      return tx.mission.findUniqueOrThrow({ where: { id: mission.id }, include: STEP_INCLUDE });
+      return tx.mission.findUniqueOrThrow({ where: { id: created.id }, include: STEP_INCLUDE });
     });
+
+    // Émis après commit : le chauffeur (room organisation + room mission) apprend son affectation.
+    this.realtime.emitMissionAssigned({
+      organizationId,
+      missionId: mission.id,
+      driverId: mission.driverId,
+      vehicleId: mission.vehicleId,
+      status: mission.status,
+    });
+    return mission;
   }
 
   async findAll(organizationId: string, query: QueryMissionsDto) {
@@ -250,22 +286,47 @@ export class MissionsService {
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
     const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
 
-    return this.prisma.mission.findMany({
-      where: { driverId: driverSub, plannedStart: { gte: start, lt: end } },
+    const missions = await this.prisma.mission.findMany({
+      where: {
+        driverId: driverSub,
+        OR: [
+          { status: { in: [MissionStatus.ASSIGNED, MissionStatus.STARTED, MissionStatus.IN_PROGRESS] } },
+          { plannedStart: { gte: start, lt: end } },
+        ],
+      },
       orderBy: { plannedStart: 'asc' },
-      include: STEP_INCLUDE,
+      include: MOBILE_INCLUDE,
     });
+    return missions.map(this.toMobileMission);
+  }
+
+  async historyForDriver(driverSub: string) {
+    const missions = await this.prisma.mission.findMany({
+      where: {
+        driverId: driverSub,
+        status: { in: [MissionStatus.COMPLETED, MissionStatus.CANCELLED, MissionStatus.NOT_COMPLETED] },
+      },
+      orderBy: [{ actualEnd: 'desc' }, { plannedStart: 'desc' }],
+      take: 100,
+      include: MOBILE_INCLUDE,
+    });
+    return missions.map(this.toMobileMission);
   }
 
   async findOneForDriver(driverSub: string, missionId: string) {
     const mission = await this.prisma.mission.findUnique({
       where: { id: missionId },
-      include: { steps: { orderBy: { order: 'asc' }, include: { validations: true } }, events: { orderBy: { createdAt: 'asc' } } },
+      include: MOBILE_INCLUDE,
     });
     if (!mission) throw new NotFoundException('Mission introuvable');
     if (mission.driverId !== driverSub) {
       throw new ForbiddenException("Cette mission n'est pas affectée à ce chauffeur");
     }
-    return mission;
+    return this.toMobileMission(mission);
+  }
+
+  private toMobileMission<T extends { vehicle: { plateNumber: string } }>(mission: T) {
+    const { vehicle, ...rest } = mission;
+    return { ...rest, vehiclePlateNumber: vehicle.plateNumber };
   }
 }

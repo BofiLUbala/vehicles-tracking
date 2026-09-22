@@ -16,7 +16,7 @@ export class DriversController {
 
   @Roles(RoleName.ADMIN, RoleName.SUPER_ADMIN)
   @Post()
-  @ApiOperation({ summary: 'Créer un chauffeur' })
+  @ApiOperation({ summary: 'Créer un chauffeur (invitation d’un chauffeur sans compte mobile)' })
   create(@CurrentUser() user: AuthenticatedPrincipal, @Body() dto: CreateDriverDto) {
     return this.drivers.create(user.organizationId!, dto);
   }
@@ -28,11 +28,26 @@ export class DriversController {
     return this.drivers.findAll(user.organizationId!);
   }
 
+  // Déclaré AVANT @Get(':id') : « linkable » ne doit pas être capturé comme un id.
+  @Roles(RoleName.ADMIN, RoleName.SUPER_ADMIN)
+  @Get('linkable')
+  @ApiOperation({ summary: 'Comptes chauffeurs éligibles au rattachement (actifs, même organisation)' })
+  listLinkable(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.drivers.listLinkable(user.organizationId!);
+  }
+
   @Roles(RoleName.ADMIN, RoleName.SUPER_ADMIN)
   @Get(':id')
   @ApiOperation({ summary: 'Détail d\'un chauffeur' })
   findOne(@CurrentUser() user: AuthenticatedPrincipal, @Param('id') id: string) {
     return this.drivers.findOne(user.organizationId!, id);
+  }
+
+  @Roles(RoleName.ADMIN, RoleName.SUPER_ADMIN)
+  @Post(':id/invite')
+  @ApiOperation({ summary: 'Renvoyer une invitation à un chauffeur sans compte mobile' })
+  resendInvitation(@CurrentUser() user: AuthenticatedPrincipal, @Param('id') id: string) {
+    return this.drivers.resendInvitation(user.organizationId!, id);
   }
 
   @Roles(RoleName.ADMIN, RoleName.SUPER_ADMIN)

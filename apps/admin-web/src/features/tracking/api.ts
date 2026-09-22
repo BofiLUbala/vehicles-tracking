@@ -31,3 +31,19 @@ export async function fetchMissionTrace(missionId: string): Promise<MissionTrace
   const res = await apiClient.get<MissionTraceResponse>(`/tracking/missions/${missionId}/trace`);
   return res.data;
 }
+
+/** Itinéraire planifié (TomTom Routing, via le backend) — DÉRIVÉ, distinct de la trace GPS réelle. */
+export interface PlannedRouteResponse {
+  derived: true;
+  source: 'tomtom-routing';
+  missionId: string;
+  points: { latitude: number; longitude: number }[];
+  lengthInMeters: number;
+  travelTimeInSeconds: number;
+  trafficDelayInSeconds: number;
+}
+
+export async function fetchPlannedRoute(missionId: string): Promise<PlannedRouteResponse> {
+  const res = await apiClient.get<PlannedRouteResponse>(`/tracking/missions/${missionId}/planned-route`);
+  return res.data;
+}

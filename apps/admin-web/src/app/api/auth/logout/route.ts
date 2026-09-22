@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { REFRESH_COOKIE, clearSessionCookies } from '@/lib/session';
 
-const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.API_BASE_URL ?? 'http://127.0.0.1:3001/api/v1';
 
 /** Déconnexion idempotente : révoque la session côté API si possible, efface les cookies dans tous les cas. */
 export async function POST(req: NextRequest) {

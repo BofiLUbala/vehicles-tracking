@@ -1,6 +1,8 @@
 import { Injectable, Logger, NotImplementedException, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OtpChannel } from '@prisma/client';
+import { promises as dnsPromises } from 'dns';
+import { isIP } from 'net';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { OtpSenderPort } from '../ports/otp-sender.port';
@@ -19,6 +21,7 @@ export class SmtpEmailSender implements OtpSenderPort, OnModuleInit, OnModuleDes
   readonly channel = OtpChannel.EMAIL;
   private readonly logger = new Logger('SmtpEmailSender');
   private transporter?: Transporter;
+  private transporterInit?: Promise<Transporter>;
   private warmup?: Promise<void>;
 
   constructor(private readonly config: ConfigService) {}
@@ -31,7 +34,7 @@ export class SmtpEmailSender implements OtpSenderPort, OnModuleInit, OnModuleDes
   onModuleInit() {
     if (!this.config.get<string>('SMTP_HOST')) return;
     this.warmup = this.getTransporter()
-      .verify()
+      .then((transporter) => transporter.verify())
       .then(() => {
         this.logger.log('Connexion SMTP vérifiée et prête');
       })
@@ -40,19 +43,69 @@ export class SmtpEmailSender implements OtpSenderPort, OnModuleInit, OnModuleDes
       });
   }
 
-  private getTransporter(): Transporter {
-    if (this.transporter) return this.transporter;
-
+  private assertConfigured(): string {
     const host = this.config.get<string>('SMTP_HOST');
     if (!host) {
       throw new NotImplementedException(
         "Envoi e-mail réel non configuré (SMTP_HOST manquant) — renseigner SMTP_HOST/PORT/USER/PASSWORD/FROM",
       );
     }
+    return host;
+  }
+
+  /**
+   * Résout le nom d'hôte SMTP avec le résolveur du SYSTÈME (getaddrinfo) et renvoie l'adresse IP.
+   *
+   * Pourquoi : nodemailer résout les noms avec `dns.resolve4/resolve6` (c-ares), qui interroge
+   * directement les serveurs DNS configurés dans Node. Sur certains postes (DNS local 127.0.0.1 : VPN,
+   * proxy, DNS filtrant) ces requêtes ne reçoivent JAMAIS de réponse alors que `dns.lookup` répond en
+   * quelques ms. Résultat constaté en conditions réelles : chaque envoi restait bloqué jusqu'à
+   * SMTP_SEND_TIMEOUT_MS sans jamais ouvrir de connexion, et l'API renvoyait « service indisponible ».
+   * On se connecte donc à l'IP en conservant le nom d'hôte pour la validation du certificat TLS.
+   */
+  private async resolveHost(host: string): Promise<{ host: string; servername?: string }> {
+    if (isIP(host)) return { host };
+    try {
+      const family = this.config.get<string>('SMTP_IPV4_ONLY') === 'true' ? 4 : 0;
+      const timeoutMs = this.num('SMTP_CONNECTION_TIMEOUT_MS', 30_000);
+      const { address } = await Promise.race([
+        dnsPromises.lookup(host, { family }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('délai de résolution DNS dépassé')), timeoutMs).unref()),
+      ]);
+      return { host: address, servername: host };
+    } catch (err) {
+      // Repli : laisser nodemailer essayer avec le nom (comportement d'origine).
+      this.logger.warn(`Résolution DNS système impossible pour ${host} (${err instanceof Error ? err.message : 'erreur'}) — repli sur le résolveur de nodemailer`);
+      return { host };
+    }
+  }
+
+  private getTransporter(): Promise<Transporter> {
+    if (this.transporter) return Promise.resolve(this.transporter);
+    if (!this.transporterInit) {
+      this.transporterInit = this.createTransporter().then(
+        (transporter) => {
+          this.transporter = transporter;
+          return transporter;
+        },
+        (err) => {
+          this.transporterInit = undefined;
+          throw err;
+        },
+      );
+    }
+    return this.transporterInit;
+  }
+
+  private async createTransporter(): Promise<Transporter> {
+    const configuredHost = this.assertConfigured();
+    const target = await this.resolveHost(configuredHost);
 
     const port = this.num('SMTP_PORT', 587);
-    this.transporter = nodemailer.createTransport({
-      host,
+    return nodemailer.createTransport({
+      host: target.host,
+      // Connexion par IP : le certificat doit rester validé contre le NOM d'hôte d'origine.
+      ...(target.servername ? { tls: { servername: target.servername } } : {}),
       port,
       secure: port === 465, // STARTTLS implicite sur 587/25, TLS direct sur 465
       pool: true,
@@ -67,7 +120,6 @@ export class SmtpEmailSender implements OtpSenderPort, OnModuleInit, OnModuleDes
         pass: this.config.get<string>('SMTP_PASSWORD'),
       },
     });
-    return this.transporter;
   }
 
   /** Ferme le pool et force la reconstruction d'un transport propre au prochain envoi. */
@@ -78,17 +130,19 @@ export class SmtpEmailSender implements OtpSenderPort, OnModuleInit, OnModuleDes
       /* le transport peut déjà être fermé */
     }
     this.transporter = undefined;
+    this.transporterInit = undefined;
     this.warmup = undefined;
   }
 
   async send(identifier: string, code: string): Promise<void> {
     const from = this.config.get<string>('SMTP_FROM') || this.config.get<string>('SMTP_USER');
-    const transporter = this.getTransporter();
+    this.assertConfigured();
 
     try {
       // Le warm-up éventuellement en cours fait partie du délai global : attendre la connexion évite
       // de payer la poignée de main TLS ici, sans jamais bloquer au-delà de SMTP_SEND_TIMEOUT_MS.
       const send = (async () => {
+        const transporter = await this.getTransporter();
         if (this.warmup) await this.warmup.catch(() => undefined);
         return transporter.sendMail({
           from,
@@ -127,5 +181,20 @@ export class SmtpEmailSender implements OtpSenderPort, OnModuleInit, OnModuleDes
 
   onModuleDestroy() {
     this.resetTransporter();
+  }
+
+  async sendDriverInvitation(email: string, firstName: string): Promise<void> {
+    try {
+      const transporter = await this.getTransporter();
+      await transporter.sendMail({
+        from: this.config.get<string>('SMTP_FROM') || this.config.get<string>('SMTP_USER'),
+        to: email,
+        subject: 'Invitation à rejoindre Tracking Vehicles',
+        text: `Bonjour ${firstName},\n\nVotre organisation vous invite à utiliser l'application mobile Tracking Vehicles. Ouvrez l'application, choisissez « Créer un compte », puis inscrivez-vous avec cette adresse e-mail. Un code de vérification vous sera envoyé pour activer votre compte. Vous pourrez ensuite vous connecter avec votre e-mail et le mot de passe choisi.\n\nSi vous n'attendiez pas cette invitation, ignorez ce message.`,
+      });
+    } catch (err) {
+      this.logger.error(`Échec d'invitation SMTP pour ${email}: ${err instanceof Error ? err.message : 'erreur inconnue'}`);
+      throw new ServiceUnavailableException("Le service d’envoi d’e-mail est momentanément indisponible. Réessayez dans quelques instants.");
+    }
   }
 }

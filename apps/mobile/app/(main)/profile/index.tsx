@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
-import { ArrowLeft, BadgeCheck, Building2, CreditCard, LogOut, Package, Phone, UserRound } from 'lucide-react-native';
+import { ArrowLeft, BadgeCheck, Building2, CreditCard, LogOut, Mail, Package, Phone, Truck, UserRound } from 'lucide-react-native';
 import { useAuth } from '../../../src/context/AuthContext';
 import { AuthApi } from '../../../src/api/auth.api';
 import { Driver } from '../../../src/types/auth.types';
@@ -51,7 +51,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={20} color={AppTheme.text} />
@@ -74,7 +74,7 @@ export default function ProfileScreen() {
           </Text>
           <View style={styles.roleRow}>
             <UserRound size={14} color={AppTheme.textSecondary} />
-            <Text style={styles.driverRole}>{profile ? 'Chauffeur de collecte' : '—'}</Text>
+            <Text style={styles.driverRole}>{profile?.role === 'DRIVER' ? 'Chauffeur' : profile?.role || '—'}</Text>
           </View>
         </View>
 
@@ -99,6 +99,16 @@ export default function ProfileScreen() {
             <View style={styles.infoBody}>
               <Text style={styles.infoLabel}>Numéro de permis</Text>
               <Text style={styles.infoValue}>{profile?.licenseNumber || 'Non renseigné'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconWrap}>
+              <Mail size={16} color={AppTheme.info} />
+            </View>
+            <View style={styles.infoBody}>
+              <Text style={styles.infoLabel}>E-mail</Text>
+              <Text style={styles.infoValue}>{profile?.email || 'Non renseigné'}</Text>
             </View>
           </View>
 
@@ -128,13 +138,23 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <View style={[styles.infoRow, styles.infoRowLast]}>
+          <View style={styles.infoRow}>
             <View style={styles.infoIconWrap}>
               <Building2 size={16} color={AppTheme.textMuted} />
             </View>
             <View style={styles.infoBody}>
               <Text style={styles.infoLabel}>Organisation</Text>
               <Text style={styles.infoValue}>{profile?.organizationName || 'Non renseignée'}</Text>
+            </View>
+          </View>
+
+          <View style={[styles.infoRow, styles.infoRowLast]}>
+            <View style={styles.infoIconWrap}>
+              <Truck size={16} color={AppTheme.primary} />
+            </View>
+            <View style={styles.infoBody}>
+              <Text style={styles.infoLabel}>Véhicule affecté</Text>
+              <Text style={styles.infoValue}>{profile?.currentVehiclePlate || 'Non affecté'}</Text>
             </View>
           </View>
         </View>

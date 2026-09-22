@@ -140,4 +140,34 @@ describe('Auth Refresh Mutex & Concurrency', () => {
     expect(AuthService.clearTokens).toHaveBeenCalled();
     expect(forceLogoutMock).toHaveBeenCalled();
   });
+
+  // Régression constatée en conditions réelles : la synchronisation GPS (POST /tracking/positions/batch)
+  // continuait d'envoyer la file SQLite d'un ancien chauffeur alors que personne n'était connecté.
+  // Le 401 déclenchait la déconnexion forcée, qui effaçait l'identifiant et le mot de passe de
+  // l'inscription en cours : « Valider » devenait un no-op silencieux.
+  it('does NOT force a logout on a 401 when there is no session at all (no refresh token)', async () => {
+    vi.spyOn(AuthService, 'getAccessToken').mockResolvedValue(null);
+    vi.spyOn(AuthService, 'getRefreshToken').mockResolvedValue(null);
+    const clearTokens = vi.spyOn(AuthService, 'clearTokens').mockResolvedValue();
+    const refreshSpy = vi.spyOn(refreshClient, 'post');
+
+    const forceLogoutMock = vi.fn().mockResolvedValue(undefined);
+    setForceLogoutHandler(forceLogoutMock);
+
+    apiClient.defaults.adapter = vi.fn().mockImplementation(async (config) => {
+      const error: any = new Error('Unauthorized');
+      error.config = config;
+      error.response = { status: 401, data: { message: 'Unauthorized' } };
+      error.isAxiosError = true;
+      throw error;
+    });
+
+    await expect(apiClient.post('/tracking/positions/batch', { positions: [] })).rejects.toMatchObject({
+      response: { status: 401 },
+    });
+
+    expect(forceLogoutMock).not.toHaveBeenCalled();
+    expect(clearTokens).not.toHaveBeenCalled();
+    expect(refreshSpy).not.toHaveBeenCalled();
+  });
 });

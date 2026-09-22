@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AlertLevel, AlertType, LocationType, Prisma } from '@prisma/client';
+import { AlertLevel, AlertType, FuelRecord, LocationType, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { FilesService } from '../files/files.service';
@@ -348,7 +348,61 @@ export class FuelService {
       };
     }
 
-    return this.prisma.fuelRecord.findMany({ where, orderBy: { createdAt: 'desc' } });
+    const records = await this.prisma.fuelRecord.findMany({ where, orderBy: { createdAt: 'desc' } });
+    return this.withListContext(records);
+  }
+
+  /**
+   * Enrichit la liste avec ce que l'écran admin affiche réellement :
+   *  - plaque du véhicule et nom du chauffeur (la table ne stocke que les identifiants, l'UI
+   *    affichait donc des UUID bruts) ;
+   *  - `distanceKm` / `consumptionL100km` DÉRIVÉS du relevé précédent du même véhicule.
+   *
+   * La consommation n'est pas stockée en base : elle n'existait qu'en réponse de création, si bien
+   * que la colonne « Consommation » de la liste restait vide. Elle est donc recalculée ici avec la
+   * même règle que `create()` : (litres / distance parcourue) * 100, et laissée à `null` quand le
+   * relevé précédent manque ou que l'odomètre n'a pas progressé (compteur remis à zéro/remplacé).
+   */
+  private async withListContext(records: FuelRecord[]) {
+    if (records.length === 0) return [];
+    const vehicleIds = [...new Set(records.map((r) => r.vehicleId))];
+    const driverIds = [...new Set(records.map((r) => r.driverId).filter((id): id is string => !!id))];
+
+    const [vehicles, drivers, historyRows] = await Promise.all([
+      this.prisma.vehicle.findMany({ where: { id: { in: vehicleIds } }, select: { id: true, plateNumber: true } }),
+      driverIds.length
+        ? this.prisma.driver.findMany({ where: { id: { in: driverIds } }, select: { id: true, firstName: true, lastName: true } })
+        : Promise.resolve([]),
+      // Historique complet des véhicules concernés : le relevé précédent peut être hors du filtre.
+      this.prisma.fuelRecord.findMany({
+        where: { vehicleId: { in: vehicleIds } },
+        select: { id: true, vehicleId: true, odometer: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+
+    const plateById = new Map(vehicles.map((v) => [v.id, v.plateNumber]));
+    const driverById = new Map(drivers.map((d) => [d.id, `${d.firstName} ${d.lastName}`.trim()]));
+
+    const previousOdometer = new Map<string, number | null>();
+    const lastByVehicle = new Map<string, number | null>();
+    for (const row of historyRows) {
+      previousOdometer.set(row.id, lastByVehicle.get(row.vehicleId) ?? null);
+      lastByVehicle.set(row.vehicleId, row.odometer);
+    }
+
+    return records.map((record) => {
+      const previous = previousOdometer.get(record.id) ?? null;
+      const distanceKm = previous != null && record.odometer > previous ? record.odometer - previous : null;
+      const consumptionL100km = distanceKm && distanceKm > 0 ? Number(((record.liters / distanceKm) * 100).toFixed(2)) : null;
+      return {
+        ...record,
+        vehiclePlateNumber: plateById.get(record.vehicleId) ?? null,
+        driverName: record.driverId ? driverById.get(record.driverId) ?? null : null,
+        distanceKm,
+        consumptionL100km,
+      };
+    });
   }
 
   /** `GET /fuel-records/:id` — org-scopé. */

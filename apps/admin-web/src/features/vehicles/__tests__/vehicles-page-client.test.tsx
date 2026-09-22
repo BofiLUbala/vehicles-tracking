@@ -57,11 +57,15 @@ function makeDriver(overrides: Partial<DriverDto> = {}): DriverDto {
     firstName: 'Jean',
     lastName: 'Dupont',
     phone: '+243999000000',
+    email: null,
     licenseNumber: null,
     status: 'ACTIVE',
     createdAt: '2026-09-08T10:00:00.000Z',
     updatedAt: '2026-09-08T10:00:00.000Z',
     currentVehicle: null,
+    hasMobileAccount: false,
+    lastSeenAt: null,
+    profile: { complete: false, missing: ['email', 'password'] },
     ...overrides,
   };
 }

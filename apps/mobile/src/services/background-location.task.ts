@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import * as SecureStore from 'expo-secure-store';
 import { GpsQueueRepository } from '../database/gps-queue.repository';
+import { ActiveOwner } from '../database/active-owner';
 import { BACKGROUND_LOCATION_TASK, ACTIVE_TRACKING_KEY } from './background-location-constants';
 
 export { BACKGROUND_LOCATION_TASK, ACTIVE_TRACKING_KEY };
@@ -17,11 +18,14 @@ if (Platform.OS !== 'web') {
       try {
         const activeTrackingJson = await SecureStore.getItemAsync(ACTIVE_TRACKING_KEY);
         if (!activeTrackingJson) return;
-        const { vehicleId, missionId } = JSON.parse(activeTrackingJson);
+        const { vehicleId, missionId, driverId } = JSON.parse(activeTrackingJson);
         if (!vehicleId) return;
+        // Le suivi appartient au chauffeur qui l'a démarré : s'il n'est plus celui qui est connecté
+        // (déconnexion, autre compte sur l'appareil), on n'enregistre RIEN.
+        if (!driverId || driverId !== ActiveOwner.get()) return;
         for (const loc of locations) {
           GpsQueueRepository.enqueue({
-            vehicleId, missionId,
+            driverId, vehicleId, missionId,
             latitude: loc.coords.latitude, longitude: loc.coords.longitude,
             accuracy: loc.coords.accuracy, altitude: loc.coords.altitude,
             speed: loc.coords.speed, heading: loc.coords.heading,

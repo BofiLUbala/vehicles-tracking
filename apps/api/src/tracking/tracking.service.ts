@@ -93,6 +93,14 @@ export class TrackingService {
    * GPS). Seule l'affectation chauffeur/véhicule invalide (403) empêche le stockage.
    */
   async ingestOne(driverId: string, organizationId: string, dto: CreatePositionDto) {
+    // Propriété déclarée par l'appareil : une position mise en file par le chauffeur A ne doit JAMAIS
+    // être acceptée sous le jeton du chauffeur B (même véhicule partagé, même mission absente).
+    // Vérifié AVANT l'idempotence et l'affectation. Champ optionnel : les anciens clients qui ne
+    // l'envoient pas restent soumis à la seule vérification d'affectation ci-dessous.
+    if (dto.driverId && dto.driverId !== driverId) {
+      throw wrongDriverPositionError('Cette position a été enregistrée par un autre chauffeur');
+    }
+
     const existing = await this.prisma.gpsPosition.findUnique({ where: { clientEventId: dto.clientEventId } });
     if (existing) {
       return { position: existing, duplicate: true };
@@ -110,6 +118,7 @@ export class TrackingService {
 
     const position = await this.prisma.gpsPosition.create({
       data: {
+        driverId,
         vehicleId: dto.vehicleId,
         missionId: dto.missionId,
         clientEventId: dto.clientEventId,

@@ -97,6 +97,40 @@ export class RealtimeEventsService {
     });
   }
 
+  emitMissionAssigned(params: {
+    organizationId: string;
+    missionId: string;
+    driverId: string;
+    vehicleId: string;
+    status: string;
+  }) {
+    this.emitToRooms([`organization:${params.organizationId}`, `mission:${params.missionId}`], 'mission.assigned', {
+      missionId: params.missionId,
+      driverId: params.driverId,
+      vehicleId: params.vehicleId,
+      status: params.status,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  /** Un chauffeur vient d'activer/s'inscrire son compte depuis l'application mobile. */
+  emitDriverRegistered(params: { organizationId: string; driverId: string; status: string }) {
+    this.emitToRooms([`organization:${params.organizationId}`], 'driver.registered', {
+      driverId: params.driverId,
+      status: params.status,
+      registeredAt: new Date().toISOString(),
+    });
+  }
+
+  /** Un chauffeur a été modifié côté admin (rattachement, changement de statut, affectation…). */
+  emitDriverChanged(params: { organizationId: string; driverId: string; status: string }) {
+    this.emitToRooms([`organization:${params.organizationId}`], 'driver.changed', {
+      driverId: params.driverId,
+      status: params.status,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   emitAlertCreated(params: {
     organizationId: string;
     alertId: string;

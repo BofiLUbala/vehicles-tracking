@@ -54,7 +54,8 @@ describe('Active Mission Recovery on App Restart', () => {
       execSync: vi.fn(),
       runSync: vi.fn(),
       getAllSync: vi.fn(() => []),
-      getFirstSync: vi.fn(),
+      // Un chauffeur (`drv-1`) est connecté ; les autres lectures renvoient `undefined` par défaut.
+      getFirstSync: vi.fn((sql: string) => (String(sql).includes('active_driver') ? { driver_id: 'drv-1' } : undefined)),
     };
     setDatabaseInstanceForTest(mockDb);
   });
@@ -63,6 +64,7 @@ describe('Active Mission Recovery on App Restart', () => {
     const savedState = {
       vehicleId: 'veh-recovery-123',
       missionId: 'mis-recovery-456',
+      driverId: 'drv-1', // le suivi appartient au chauffeur connecté
     };
 
     vi.mocked(SecureStore.getItemAsync).mockResolvedValue(JSON.stringify(savedState));
@@ -75,6 +77,24 @@ describe('Active Mission Recovery on App Restart', () => {
     expect(TrackingService.getActiveVehicleId()).toBe('veh-recovery-123');
     expect(TrackingService.getActiveMissionId()).toBe('mis-recovery-456');
     expect(TrackingService.isTrackingActive()).toBe(true);
+  });
+
+  // Intégrité : un suivi laissé par un autre chauffeur (ou par une version sans propriétaire) ne doit
+  // jamais être repris au nom du chauffeur qui vient de se connecter.
+  it('does not resume a tracking session that belongs to another driver', async () => {
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue(
+      JSON.stringify({ vehicleId: 'veh-A', missionId: 'mis-A', driverId: 'drv-OTHER' }),
+    );
+    const state = await TrackingService.restoreTrackingState();
+    expect(state.isTracking).toBe(false);
+    expect(state.vehicleId).toBeNull();
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalled();
+  });
+
+  it('does not resume a legacy tracking session that has no recorded owner', async () => {
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue(JSON.stringify({ vehicleId: 'veh-A', missionId: 'mis-A' }));
+    const state = await TrackingService.restoreTrackingState();
+    expect(state.isTracking).toBe(false);
   });
 
   it('returns non-tracking state when no active session is in SecureStore', async () => {
@@ -126,13 +146,13 @@ describe('Active Mission Recovery on App Restart', () => {
     MissionsCacheRepository.save(mockMissions);
     expect(mockDb.runSync).toHaveBeenCalledWith(
       expect.stringContaining('INSERT OR REPLACE INTO today_missions_cache'),
-      [JSON.stringify(mockMissions), expect.any(String)]
+      ['drv-1', JSON.stringify(mockMissions), expect.any(String)]
     );
 
     // Test retrieving from SQLite
-    mockDb.getFirstSync.mockReturnValue({
-      response_json: JSON.stringify(mockMissions),
-    });
+    mockDb.getFirstSync.mockImplementation((sql: string) =>
+      String(sql).includes('active_driver') ? { driver_id: 'drv-1' } : { response_json: JSON.stringify(mockMissions) },
+    );
 
     const cached = MissionsCacheRepository.get();
     expect(cached).toHaveLength(1);

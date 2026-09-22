@@ -36,6 +36,11 @@ export interface FuelRecordDto {
   createdAt: string;
   vehicle?: FuelRecordVehicleRef | null;
   driver?: FuelRecordDriverRef | null;
+  /** Formes à plat renvoyées par `GET /fuel-records` (plaque + nom, sans relation imbriquée). */
+  vehiclePlateNumber?: string | null;
+  driverName?: string | null;
+  /** Distance depuis le relevé précédent du même véhicule (dérivée, non stockée). */
+  distanceKm?: number | null;
   /** Optionnel : présent si le backend calcule la consommation depuis l'enregistrement précédent du véhicule. */
   consumptionL100km?: number | null;
   /** Optionnel : true si ce plein a déclenché une alerte FUEL_ANOMALY liée. */

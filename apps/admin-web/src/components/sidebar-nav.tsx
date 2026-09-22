@@ -39,12 +39,11 @@ export function SidebarNav() {
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col bg-navy text-slate-300">
-      <div className="flex items-center gap-3 px-5 py-5">
-        <BrandMark inverted />
-        <div className="flex flex-col">
-          <p className="text-sm font-bold leading-tight text-white">Tracking Vehicles</p>
-          <p className="text-2xs font-medium uppercase tracking-wider text-slate-400">Console opérationnelle</p>
-        </div>
+      <div className="flex flex-col gap-2 px-4 py-4">
+        <BrandMark inverted className="w-full" />
+        <p className="text-center text-2xs font-medium uppercase tracking-wider text-slate-400">
+          Tracking Vehicles · Console opérationnelle
+        </p>
       </div>
 
       <div className="mx-5 mb-2 border-t border-white/10" />

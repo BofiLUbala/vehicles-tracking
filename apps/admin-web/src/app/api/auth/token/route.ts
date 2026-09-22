@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ACCESS_COOKIE, REFRESH_COOKIE, clearSessionCookies, isTokenExpired, setSessionCookies } from '@/lib/session';
-
-const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3001/api/v1';
+import { refreshAdminSession } from '@/lib/refresh-session';
 
 /**
  * Expose le token d'accès courant au JS client (mémoire uniquement, jamais stocké) — nécessaire
@@ -25,24 +24,19 @@ export async function GET(req: NextRequest) {
     return res;
   }
 
-  let upstream: Response;
+  let data;
   try {
-    upstream = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
+    data = await refreshAdminSession(refreshToken);
   } catch {
     return NextResponse.json({ message: "Impossible de joindre le serveur" }, { status: 502 });
   }
 
-  if (!upstream.ok) {
-    const res = NextResponse.json({ message: 'Session expirée' }, { status: 401 });
-    clearSessionCookies(res);
-    return res;
+  if (!data) {
+    // Une réponse concurrente peut déjà avoir posé les nouveaux cookies.
+    // Ne pas écraser ces cookies avec une suppression provenant de l'ancien jeton.
+    return NextResponse.json({ message: 'Session expirée' }, { status: 401 });
   }
 
-  const data = await upstream.json();
   const res = NextResponse.json({ accessToken: data.accessToken });
   setSessionCookies(res, data.accessToken, data.refreshToken);
   return res;

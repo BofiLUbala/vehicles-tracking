@@ -1,8 +1,11 @@
-import React, { useRef, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Platform, Text } from 'react-native';
+import React, { useRef, useState, useMemo } from 'react';
+import { View, StyleSheet, Platform, Text, TouchableOpacity } from 'react-native';
+import { Crosshair, Settings2, Plus, Minus, Layers } from 'lucide-react-native';
 import { GpsCoordinates } from '../services/tracking.service';
 import { AppRadius, AppTheme } from '../theme/colors';
 import { MapStatusOverlay } from './MapStatusOverlay';
+import { TomTomMapView, TomTomMapHandle } from './TomTomMapView';
+import type { MapState, MobileMapStyle } from '../map/tomtom-map';
 
 export interface MissionStop {
   id: string;
@@ -19,6 +22,10 @@ interface MissionMapProps {
   trace: { latitude: number; longitude: number }[];
   stops: MissionStop[];
   currentStepIndex: number;
+  height?: number;
+  onSettingsPress?: () => void;
+  /** Itinéraire planifié (TomTom Routing via le backend) — affiché à part de la trace réelle. */
+  plannedRoute?: { latitude: number; longitude: number }[];
 }
 
 interface LonLatPoint {
@@ -34,7 +41,7 @@ function normalizePoint(p: { latitude?: number; longitude?: number; lat?: number
 }
 
 // Web-only fallback: renders a styled map placeholder with positioned markers
-function WebMapFallback({ currentGps, trace, stops, currentStepIndex }: MissionMapProps) {
+function WebMapFallback({ currentGps, trace, stops, currentStepIndex, height }: MissionMapProps) {
   const bounds = useMemo(() => {
     const allPoints = [
       ...stops.map((s) => normalizePoint(s)),
@@ -62,7 +69,7 @@ function WebMapFallback({ currentGps, trace, stops, currentStepIndex }: MissionM
   const isTrackingLive = !!currentGps;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, height ? styles.immersive : null, height ? { height } : null]}>
       <View style={styles.webMap}>
         {/* Grid lines */}
         <View style={[styles.gridLine, { left: '33%', top: 0, bottom: 0, width: 1 }]} />
@@ -108,61 +115,67 @@ function WebMapFallback({ currentGps, trace, stops, currentStepIndex }: MissionM
         })()}
       </View>
 
-      <MapStatusOverlay
+      {!height && <MapStatusOverlay
         active={isTrackingLive}
         label="Suivi GPS en direct"
         meta={trace.length > 0 ? `Trajet réellement parcouru · ${trace.length} points` : undefined}
-      />
+      />}
     </View>
   );
 }
 
-// Native: real MapView
-function NativeMap({ currentGps, trace, stops, currentStepIndex }: MissionMapProps) {
-  // Lazy import to avoid crash on web
-  const MapView = useMemo(() => {
-    try { return require('react-native-maps').default; } catch { return null; }
-  }, []);
-  const { Marker, Polyline, PROVIDER_DEFAULT } = useMemo(() => {
-    try { return require('react-native-maps'); } catch { return { Marker: null, Polyline: null, PROVIDER_DEFAULT: null }; }
-  }, []);
-
-  const mapRef = useRef<any>(null);
+// Native: carte TomTom (MapLibre dans une WebView). Affichage seul : le suivi GPS est indépendant.
+function NativeMap({ currentGps, trace, stops, currentStepIndex, height, onSettingsPress, plannedRoute }: MissionMapProps) {
+  const mapHandle = useRef<TomTomMapHandle | null>(null);
+  const [follow, setFollow] = useState(true);
+  const [mapStyle, setMapStyle] = useState<MobileMapStyle>('driving');
+  const [recenterNonce, setRecenterNonce] = useState(0);
   const isTrackingLive = !!currentGps;
 
-  const initialRegion = useMemo(() => {
-    if (currentGps) return { latitude: currentGps.latitude, longitude: currentGps.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 };
-    if (stops.length > 0) return { latitude: stops[0].latitude, longitude: stops[0].longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 };
-    return { latitude: -4.325, longitude: 15.322, latitudeDelta: 0.1, longitudeDelta: 0.1 };
-  }, [currentGps, stops]);
+  const state = useMemo<MapState>(
+    () => ({
+      gps: currentGps ? { latitude: currentGps.latitude, longitude: currentGps.longitude, accuracy: currentGps.accuracy } : null,
+      trace: trace.map(normalizePoint),
+      plannedRoute: (plannedRoute ?? []).map(normalizePoint),
+      stops: stops.map((stop, index) => ({
+        id: stop.id,
+        name: stop.name,
+        order: stop.order,
+        latitude: stop.latitude,
+        longitude: stop.longitude,
+        color: stop.status === 'VALIDATED' ? AppTheme.success : index === currentStepIndex ? AppTheme.tracking : AppTheme.textMuted,
+      })),
+      follow,
+      recenterNonce,
+    }),
+    [currentGps, trace, plannedRoute, stops, currentStepIndex, follow, recenterNonce],
+  );
 
-  useEffect(() => {
-    if (currentGps && mapRef.current) {
-      mapRef.current.animateToRegion({ latitude: currentGps.latitude, longitude: currentGps.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 }, 500);
-    }
-  }, [currentGps]);
-
-  const traceCoordinates = useMemo(() => trace.map(normalizePoint), [trace]);
-
-  if (!MapView || !Marker) return <WebMapFallback currentGps={currentGps} trace={trace} stops={stops} currentStepIndex={currentStepIndex} />;
+  const centerMap = () => {
+    setFollow(true);
+    setRecenterNonce((n) => n + 1);
+  };
 
   return (
-    <View style={styles.container}>
-      <MapView ref={mapRef} style={styles.map} provider={PROVIDER_DEFAULT} initialRegion={initialRegion} showsUserLocation={false} showsMyLocationButton={false} toolbarEnabled={false}>
-        {stops.map((stop, index) => {
-          const isCompleted = stop.status === 'VALIDATED';
-          const isCurrent = index === currentStepIndex;
-          const pinColor = isCompleted ? AppTheme.success : isCurrent ? AppTheme.tracking : AppTheme.textMuted;
-          return <Marker key={stop.id} coordinate={{ latitude: stop.latitude, longitude: stop.longitude }} title={stop.name} description={`${stop.actionType} - Étape ${stop.order}`} pinColor={pinColor} />;
-        })}
-        {traceCoordinates.length >= 2 && Polyline && <Polyline coordinates={traceCoordinates} strokeColor={AppTheme.tracking} strokeWidth={4} />}
-        {currentGps && (
-          <Marker coordinate={{ latitude: currentGps.latitude, longitude: currentGps.longitude }} title="Position actuelle" description={`Précision : ${currentGps.accuracy?.toFixed(0) ?? '?'} m`}>
-            <View style={styles.currentPositionMarker}><View style={styles.currentPositionInner} /></View>
-          </Marker>
-        )}
-      </MapView>
-      <MapStatusOverlay active={isTrackingLive} label="Suivi GPS en direct" meta={trace.length > 0 ? `Trajet réellement parcouru · ${trace.length} points` : undefined} />
+    <View style={[styles.container, height ? styles.immersive : null, height ? { height } : null]}>
+      <TomTomMapView state={state} onUserMoved={() => setFollow(false)} handleRef={mapHandle} mapStyle={mapStyle} />
+      {!height && <MapStatusOverlay active={isTrackingLive} label="Suivi GPS en direct" meta={trace.length > 0 ? `Trajet réellement parcouru · ${trace.length} points` : undefined} />}
+      {height && <>
+        <TouchableOpacity
+          style={styles.styleControl}
+          onPress={() => setMapStyle((m) => (m === 'driving' ? 'satellite' : 'driving'))}
+          accessibilityRole="button"
+          accessibilityLabel={mapStyle === 'driving' ? 'Vue satellite' : 'Vue standard'}
+        >
+          <Layers size={18} color={AppTheme.navy} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.settingsControl} onPress={onSettingsPress} accessibilityRole="button" accessibilityLabel="Réglages GPS"><Settings2 size={19} color={AppTheme.navy} /></TouchableOpacity>
+        <View style={styles.zoomControls}>
+          <TouchableOpacity style={styles.mapControl} onPress={() => mapHandle.current?.zoomBy(1)} accessibilityRole="button" accessibilityLabel="Zoom avant"><Plus size={20} color={AppTheme.navy} /></TouchableOpacity>
+          <TouchableOpacity style={styles.mapControl} onPress={() => mapHandle.current?.zoomBy(-1)} accessibilityRole="button" accessibilityLabel="Zoom arrière"><Minus size={20} color={AppTheme.navy} /></TouchableOpacity>
+        </View>
+        <TouchableOpacity style={[styles.centerControl, follow && styles.centerControlActive]} onPress={centerMap} accessibilityRole="button" accessibilityLabel="Centrer la carte" accessibilityState={{ selected: follow }}><Crosshair size={18} color={follow ? '#FFFFFF' : AppTheme.navy} /></TouchableOpacity>
+      </>}
     </View>
   );
 }
@@ -174,7 +187,13 @@ export function MissionMap(props: MissionMapProps) {
 
 const styles = StyleSheet.create({
   container: { height: 280, borderRadius: AppRadius.xl, overflow: 'hidden', marginBottom: 16, borderWidth: 1, borderColor: AppTheme.border },
-  map: { flex: 1 },
+  immersive: { borderRadius: 0, marginBottom: 0, borderWidth: 0 },
+  settingsControl: { position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', elevation: 4 },
+  zoomControls: { position: 'absolute', right: 12, top: '48%', borderRadius: 10, overflow: 'hidden', backgroundColor: '#FFFFFF', elevation: 4 },
+  mapControl: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: AppTheme.border },
+  centerControl: { position: 'absolute', left: 12, bottom: 34, width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', elevation: 4 },
+  centerControlActive: { backgroundColor: AppTheme.tracking },
+  styleControl: { position: 'absolute', top: 56, right: 12, width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', elevation: 4 },
   currentPositionMarker: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(20, 121, 255, 0.25)', justifyContent: 'center', alignItems: 'center' },
   currentPositionInner: { width: 11, height: 11, borderRadius: 5.5, backgroundColor: AppTheme.tracking, borderWidth: 2, borderColor: '#FFFFFF' },
   // Web fallback styles

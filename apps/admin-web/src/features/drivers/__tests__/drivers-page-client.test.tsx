@@ -5,20 +5,28 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 const fetchDriversMock = vi.fn();
+const fetchLinkableDriversMock = vi.fn();
 const createDriverMock = vi.fn();
 const updateDriverMock = vi.fn();
 const removeDriverMock = vi.fn();
 const assignVehicleToDriverMock = vi.fn();
 const revokeDriverDeviceMock = vi.fn();
+const inviteDriverMock = vi.fn();
+const linkDriverMock = vi.fn();
+const resendDriverInvitationMock = vi.fn();
 
 vi.mock('@/features/drivers/api', () => ({
   fetchDrivers: (...args: unknown[]) => fetchDriversMock(...args),
+  fetchLinkableDrivers: (...args: unknown[]) => fetchLinkableDriversMock(...args),
   fetchDriver: vi.fn(),
   createDriver: (...args: unknown[]) => createDriverMock(...args),
   updateDriver: (...args: unknown[]) => updateDriverMock(...args),
   removeDriver: (...args: unknown[]) => removeDriverMock(...args),
   assignVehicleToDriver: (...args: unknown[]) => assignVehicleToDriverMock(...args),
   revokeDriverDevice: (...args: unknown[]) => revokeDriverDeviceMock(...args),
+  inviteDriver: (...args: unknown[]) => inviteDriverMock(...args),
+  linkDriver: (...args: unknown[]) => linkDriverMock(...args),
+  resendDriverInvitation: (...args: unknown[]) => resendDriverInvitationMock(...args),
 }));
 
 const fetchVehiclesMock = vi.fn();
@@ -28,6 +36,19 @@ vi.mock('@/features/vehicles/api', () => ({
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('@/features/tracking/socket', () => ({
+  connectTrackingSocket: vi.fn(() => ({
+    on: vi.fn(),
+    off: vi.fn(),
+    disconnect: vi.fn(),
+  })),
+}));
+
+vi.mock('@/lib/api-client', () => ({
+  fetchAccessToken: vi.fn().mockResolvedValue('mock-token'),
+  apiErrorMessage: (_err: unknown, fallback: string) => fallback,
 }));
 
 import { DriversPageClient } from '@/features/drivers/drivers-page-client';
@@ -41,11 +62,17 @@ function makeDriver(overrides: Partial<DriverDto> = {}): DriverDto {
     firstName: 'Jean',
     lastName: 'Dupont',
     phone: '+243999000000',
+    email: 'jean@example.com',
     licenseNumber: 'LIC-1',
     status: 'ACTIVE',
     createdAt: '2026-09-08T10:00:00.000Z',
     updatedAt: '2026-09-08T10:00:00.000Z',
     currentVehicle: null,
+    activeMission: null,
+    hasMobileAccount: true,
+    device: null,
+    lastSeenAt: null,
+    profile: { complete: true, missing: [] },
     ...overrides,
   };
 }
@@ -75,13 +102,17 @@ function renderWithClient(children: ReactNode) {
 describe('DriversPageClient', () => {
   beforeEach(() => {
     fetchDriversMock.mockReset();
+    fetchLinkableDriversMock.mockReset();
     createDriverMock.mockReset();
     updateDriverMock.mockReset();
     removeDriverMock.mockReset();
     assignVehicleToDriverMock.mockReset();
     revokeDriverDeviceMock.mockReset();
+    inviteDriverMock.mockReset();
+    linkDriverMock.mockReset();
     fetchVehiclesMock.mockReset();
     fetchVehiclesMock.mockResolvedValue([makeVehicle()]);
+    fetchLinkableDriversMock.mockResolvedValue([]);
   });
 
   it('renders driver rows from the mocked API response', async () => {
@@ -112,19 +143,52 @@ describe('DriversPageClient', () => {
     expect(screen.getByText('Marie Curie')).toBeInTheDocument();
   });
 
-  it('validates the create-driver form (required fields and phone format)', async () => {
+  it('opens the link driver dialog (no longer creates directly)', async () => {
     fetchDriversMock.mockResolvedValue([]);
     const user = userEvent.setup();
 
     renderWithClient(<DriversPageClient />);
 
-    await user.click(await screen.findByRole('button', { name: /nouveau chauffeur/i }));
-    await user.type(screen.getByLabelText(/téléphone/i), '0999000000');
-    await user.click(screen.getByRole('button', { name: /^enregistrer$/i }));
+    // Button text changed from "Nouveau chauffeur" to "Ajouter un chauffeur"
+    await user.click(await screen.findByRole('button', { name: /ajouter un chauffeur/i }));
 
-    expect(await screen.findByText(/prénom est requis/i)).toBeInTheDocument();
-    expect(screen.getByText(/format e\.164/i)).toBeInTheDocument();
+    // Should show the linkable accounts picker (empty state)
+    expect(await screen.findByText(/aucun compte chauffeur/i)).toBeInTheDocument();
     expect(createDriverMock).not.toHaveBeenCalled();
+    expect(inviteDriverMock).not.toHaveBeenCalled();
+  });
+
+  it('combines the selected area code with the local number when inviting', async () => {
+    fetchDriversMock.mockResolvedValue([]);
+    inviteDriverMock.mockResolvedValue(makeDriver({ phone: '+33612345678' }));
+    const user = userEvent.setup();
+    renderWithClient(<DriversPageClient />);
+
+    await user.click(await screen.findByRole('button', { name: /ajouter un chauffeur/i }));
+    await user.click(screen.getByRole('button', { name: /inviter un nouveau chauffeur/i }));
+    await user.type(screen.getByLabelText('Prénom'), 'Marie');
+    await user.type(screen.getByLabelText('Nom'), 'Curie');
+    await user.selectOptions(screen.getByLabelText('Indicatif téléphonique'), '+33');
+    await user.type(screen.getByLabelText('Téléphone'), '06 12 34 56 78');
+    await user.click(screen.getByRole('button', { name: /ajouter et inviter/i }));
+
+    await waitFor(() => expect(inviteDriverMock).toHaveBeenCalledWith(
+      expect.objectContaining({ firstName: 'Marie', lastName: 'Curie', phone: '+33612345678' }),
+    ));
+  });
+
+  it('explains a duplicate number before submitting the invitation', async () => {
+    fetchDriversMock.mockResolvedValue([makeDriver()]);
+    const user = userEvent.setup();
+    renderWithClient(<DriversPageClient />);
+
+    await user.click(await screen.findByRole('button', { name: /ajouter un chauffeur/i }));
+    await user.click(screen.getByRole('button', { name: /inviter un nouveau chauffeur/i }));
+    await user.type(screen.getByLabelText('Téléphone'), '0999 000 000');
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Ce numéro est déjà utilisé par Jean Dupont');
+    expect(screen.getByRole('button', { name: /ajouter et inviter/i })).toBeDisabled();
+    expect(inviteDriverMock).not.toHaveBeenCalled();
   });
 
   it('calls assignVehicleToDriver with the driver id and selected vehicle id', async () => {
@@ -135,9 +199,8 @@ describe('DriversPageClient', () => {
     renderWithClient(<DriversPageClient />);
 
     await user.click(await screen.findByRole('button', { name: /affecter véhicule/i }));
-    await screen.findByText('Véhicule');
-
-    const select = screen.getByLabelText(/véhicule$/i);
+    // Wait for the dialog's vehicle select to appear
+    const select = await screen.findByLabelText(/véhicule$/i);
     await user.selectOptions(select, 'v1');
 
     await user.click(screen.getByRole('button', { name: /^affecter$/i }));

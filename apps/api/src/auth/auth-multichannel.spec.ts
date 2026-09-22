@@ -7,6 +7,7 @@ import * as argon2 from 'argon2';
 import { AuthService } from './auth.service';
 import { RedisOtpStore } from './redis-otp-store.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeEventsService } from '../tracking/realtime-events.service';
 import { OTP_SENDER_EMAIL, OTP_SENDER_WHATSAPP } from './ports/otp-sender.port';
 import { AuthMode } from './dto/request-otp.dto';
 
@@ -113,6 +114,7 @@ describe('AuthService - Multi-Channel & Multi-Mode Security Suite', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: OTP_SENDER_WHATSAPP, useValue: mockWhatsappSender },
         { provide: OTP_SENDER_EMAIL, useValue: mockEmailSender },
+        { provide: RealtimeEventsService, useValue: { emitDriverRegistered: jest.fn(), emitDriverChanged: jest.fn() } },
       ],
     }).compile();
 
@@ -278,6 +280,36 @@ describe('AuthService - Multi-Channel & Multi-Mode Security Suite', () => {
   });
 
   describe("4. Activation réussie + connexion par mot de passe (sans OTP)", () => {
+    it('activates the invited driver on the same record and saves email and password hash', async () => {
+      const email = 'invited@company.cd';
+      const invited = {
+        id: 'driver-invited', organizationId: 'org-1', firstName: 'Jean', lastName: 'Dupont',
+        email, phone: '+243999000000', status: 'ACTIVE', passwordHash: null,
+      };
+      mockPrisma.driver.findFirst.mockResolvedValueOnce(null); // No activated account yet.
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'org-1', name: 'Régie Kinshasa' });
+      mockPrisma.driver.findFirst.mockResolvedValueOnce(invited);
+      mockPrisma.driver.update.mockImplementationOnce(async ({ data }: { data: { passwordHash: string } }) => ({
+        ...invited, ...data,
+      }));
+
+      const { devCode } = await service.requestOtp({ mode: AuthMode.SIGN_UP, channel: OtpChannel.EMAIL, email });
+      const session = await service.verifyOtp({
+        mode: AuthMode.SIGN_UP, channel: OtpChannel.EMAIL, email, code: devCode!, password: 'DriverPass123',
+      });
+
+      expect(mockPrisma.driver.create).not.toHaveBeenCalled();
+      expect(mockPrisma.driver.update).toHaveBeenCalledWith({
+        where: { id: invited.id },
+        data: expect.objectContaining({ passwordHash: expect.any(String), status: 'ACTIVE' }),
+      });
+      const savedHash = mockPrisma.driver.update.mock.calls[0][0].data.passwordHash;
+      expect(savedHash).not.toBe('DriverPass123');
+      expect(await argon2.verify(savedHash, 'DriverPass123')).toBe(true);
+      expect(session.driver.id).toBe(invited.id);
+      expect(session.driver.email).toBe(email);
+    });
+
     it('verifies Email SIGN_UP, hashes password and registers new driver in organization', async () => {
       const email = 'newdriver@company.cd';
       mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'org-1', name: 'Régie Kinshasa' });

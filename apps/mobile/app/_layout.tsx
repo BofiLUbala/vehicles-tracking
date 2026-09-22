@@ -13,7 +13,7 @@ export default function RootLayout() {
       <AuthProvider>
         <SyncProvider>
           <TrackingProvider>
-            <StatusBar style="light" />
+            <StatusBar style="dark" />
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="(auth)" />

@@ -63,4 +63,30 @@ describe('VehiclesService (intégration DB réelle)', () => {
     expect(all.some((v) => v.id === vehicle.id)).toBe(false);
     await prisma.vehicle.delete({ where: { id: vehicle.id } });
   });
+
+  it('findAll expose la mission active éventuelle du véhicule', async () => {
+    const plate = `KIN-${Math.floor(1000 + Math.random() * 8999)}`;
+    const vehicle = await vehicles.create(DEMO_ORG_ID, { plateNumber: plate });
+    const phone = `+2435${Math.floor(10000000 + Math.random() * 89999999)}`;
+    const driver = await drivers.create(DEMO_ORG_ID, { firstName: 'Vh', lastName: 'Ctx', phone });
+    try {
+      const bare = await vehicles.findOne(DEMO_ORG_ID, vehicle.id);
+      expect(bare.activeMission).toBeNull();
+
+      const mission = await prisma.mission.create({
+        data: { organizationId: DEMO_ORG_ID, driverId: driver.id, vehicleId: vehicle.id, status: 'STARTED' },
+      });
+      try {
+        const all = await vehicles.findAll(DEMO_ORG_ID);
+        const row = all.find((v: any) => v.id === vehicle.id);
+        expect(row?.activeMission?.id).toBe(mission.id);
+        expect(row?.activeMission?.status).toBe('STARTED');
+      } finally {
+        await prisma.mission.delete({ where: { id: mission.id } }).catch(() => undefined);
+      }
+    } finally {
+      await prisma.driver.delete({ where: { id: driver.id } }).catch(() => undefined);
+      await prisma.vehicle.delete({ where: { id: vehicle.id } }).catch(() => undefined);
+    }
+  });
 });

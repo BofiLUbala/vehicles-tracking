@@ -1,9 +1,13 @@
 import { getDatabase } from './db';
+import { ActiveOwner } from './active-owner';
 import { PendingGpsPositionRow } from '../types/sync.types';
 import { GpsPositionPayload } from '../types/tracking.types';
+import { createClientEventId } from '../utils/client-event-id';
 
 export interface EnqueueGpsParams {
   clientEventId?: string;
+  /** Chauffeur qui a démarré le suivi. Si fourni et différent du chauffeur connecté, la position est ignorée. */
+  driverId?: string;
   vehicleId: string;
   missionId?: string | null;
   latitude: number;
@@ -18,18 +22,25 @@ export interface EnqueueGpsParams {
 
 export const GpsQueueRepository = {
   enqueue(params: EnqueueGpsParams): void {
+    // Aucun chauffeur connecté => la position n'a pas de propriétaire : on ne l'enregistre pas plutôt que
+    // de risquer de l'attribuer à quelqu'un d'autre (la tâche d'arrière-plan peut survivre à une déconnexion).
+    const owner = ActiveOwner.get();
+    if (!owner) return;
+    // Un suivi démarré par le chauffeur A qui survit à sa déconnexion ne doit jamais alimenter la file de B.
+    if (params.driverId && params.driverId !== owner) return;
     const db = getDatabase();
-    const clientEventId = params.clientEventId || `gps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const clientEventId = params.clientEventId || createClientEventId();
     const recordedAt = params.recordedAt || new Date().toISOString();
     const createdAtDevice = new Date().toISOString();
 
     db.runSync(
       `INSERT OR IGNORE INTO pending_gps_positions (
-        client_event_id, vehicle_id, mission_id, latitude, longitude,
+        driver_id, client_event_id, vehicle_id, mission_id, latitude, longitude,
         accuracy, altitude, speed, heading, is_mocked,
         recorded_at, created_at_device, sync_status, retry_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)`,
       [
+        owner,
         clientEventId,
         params.vehicleId,
         params.missionId || null,
@@ -47,15 +58,17 @@ export const GpsQueueRepository = {
   },
 
   getNextBatch(limit = 100, force = false, maxAutoRetries = 8): PendingGpsPositionRow[] {
+    const owner = ActiveOwner.get();
+    if (!owner) return [];
     const db = getDatabase();
     const nowIso = new Date().toISOString();
 
     if (force) {
       return db.getAllSync<PendingGpsPositionRow>(
         `SELECT * FROM pending_gps_positions 
-         WHERE sync_status != 'synced' AND sync_status != 'uploading'
+         WHERE driver_id = ? AND sync_status != 'synced' AND sync_status != 'uploading'
          ORDER BY recorded_at ASC LIMIT ?`,
-        [limit]
+        [owner, limit]
       );
     }
 
@@ -64,8 +77,9 @@ export const GpsQueueRepository = {
        WHERE sync_status IN ('pending', 'failed')
          AND retry_count < ?
          AND (next_retry_at IS NULL OR next_retry_at <= ?)
+         AND driver_id = ?
        ORDER BY recorded_at ASC LIMIT ?`,
-      [maxAutoRetries, nowIso, limit]
+      [maxAutoRetries, nowIso, owner, limit]
     );
   },
 
@@ -110,34 +124,43 @@ export const GpsQueueRepository = {
   },
 
   getPendingCount(): number {
+    const owner = ActiveOwner.get();
+    if (!owner) return 0;
     const db = getDatabase();
     const row = db.getFirstSync<{ count: number }>(
-      `SELECT COUNT(*) as count FROM pending_gps_positions WHERE sync_status != 'synced'`
+      `SELECT COUNT(*) as count FROM pending_gps_positions WHERE driver_id = ? AND sync_status != 'synced'`,
+      [owner]
     );
     return row?.count || 0;
   },
 
   getFailedCount(): number {
+    const owner = ActiveOwner.get();
+    if (!owner) return 0;
     const db = getDatabase();
     const row = db.getFirstSync<{ count: number }>(
-      `SELECT COUNT(*) as count FROM pending_gps_positions WHERE sync_status = 'failed'`
+      `SELECT COUNT(*) as count FROM pending_gps_positions WHERE driver_id = ? AND sync_status = 'failed'`,
+      [owner]
     );
     return row?.count || 0;
   },
 
   getMissionPositions(missionId: string): { latitude: number; longitude: number; recorded_at: string }[] {
+    const owner = ActiveOwner.get();
+    if (!owner) return [];
     const db = getDatabase();
     return db.getAllSync<{ latitude: number; longitude: number; recorded_at: string }>(
       `SELECT latitude, longitude, recorded_at FROM pending_gps_positions 
-       WHERE mission_id = ? 
+       WHERE driver_id = ? AND mission_id = ? 
        ORDER BY recorded_at ASC`,
-      [missionId]
+      [owner, missionId]
     );
   },
 
   toPayload(row: PendingGpsPositionRow): GpsPositionPayload {
     return {
       clientEventId: row.client_event_id,
+      driverId: row.driver_id || undefined,
       vehicleId: row.vehicle_id,
       missionId: row.mission_id || null,
       latitude: row.latitude,

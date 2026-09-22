@@ -90,6 +90,8 @@ export function getDatabase(): WebDatabase {
             return conditions.every((cond: string) => {
               const [col, op, val] = cond.split(/\s*(=|!=|<|>|<=|>=|LIKE)\s*/);
               const key = col.trim().replace(/['"]/g, '');
+              // Aperçu web : ce faux SQL ignore les paramètres liés (`driver_id = ?`) ; pas de file native ici.
+              if (key === 'driver_id') return true;
               const v = val?.trim().replace(/^['"]|['"]$/g, '');
               const rv = row[key];
               if (op === '=' || op === '==') return String(rv) === String(v);

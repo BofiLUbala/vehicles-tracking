@@ -28,12 +28,6 @@ class WebSocketServiceClass {
     });
 
     this.socket.on('connect', () => {
-      // Re-attach existing event listeners
-      this.listeners.forEach((handlers, event) => {
-        handlers.forEach((handler) => {
-          this.socket?.on(event, handler);
-        });
-      });
       // Ré-abonne aux rooms demandées (le serveur ne mémorise aucun abonnement côté client).
       this.rooms.forEach((room) => {
         this.socket?.emit('subscribe', { room });

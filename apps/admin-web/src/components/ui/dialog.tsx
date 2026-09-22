@@ -36,7 +36,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-pop"
+        className="relative z-10 w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-pop"
       >
         {children}
       </div>

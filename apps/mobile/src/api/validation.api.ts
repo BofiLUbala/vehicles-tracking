@@ -12,7 +12,7 @@ export const ValidationApi = {
     try {
       const formData = new FormData();
 
-      formData.append('data', JSON.stringify(params.payload));
+      formData.append('metadata', JSON.stringify(params.payload));
 
       const filename = params.photoUri.split('/').pop() || `step_${params.stepId}.jpg`;
       formData.append('photo', {

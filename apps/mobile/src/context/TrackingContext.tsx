@@ -31,6 +31,7 @@ export const TrackingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [currentGps, setCurrentGps] = useState<GpsCoordinates | null>(null);
   const traceRef = useRef<TracePoint[]>([]);
   const [trace, setTrace] = useState<TracePoint[]>([]);
+  const activeTrackingRef = useRef<{ vehicleId: string; missionId: string | null } | null>(null);
 
   const refreshCurrentPosition = useCallback(async () => {
     const pos = await TrackingService.getCurrentPosition();
@@ -58,31 +59,37 @@ export const TrackingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setTrace([...traceRef.current]);
   }, []);
 
-  const startTracking = async (vehicleId: string, missionId?: string | null): Promise<boolean> => {
+  const startTracking = useCallback(async (vehicleId: string, missionId?: string | null): Promise<boolean> => {
+    if (activeTrackingRef.current?.vehicleId === vehicleId && activeTrackingRef.current?.missionId === (missionId || null)) {
+      return true;
+    }
     const success = await TrackingService.startTracking(vehicleId, missionId);
     if (success) {
+      activeTrackingRef.current = { vehicleId, missionId: missionId || null };
       setIsTracking(true);
       setActiveVehicleId(vehicleId);
       setActiveMissionId(missionId || null);
       traceRef.current = [];
       setTrace([]);
-      refreshCurrentPosition();
+      void refreshCurrentPosition();
     }
     return success;
-  };
+  }, [refreshCurrentPosition]);
 
-  const stopTracking = async () => {
+  const stopTracking = useCallback(async () => {
     await TrackingService.stopTracking();
+    activeTrackingRef.current = null;
     setIsTracking(false);
     setActiveVehicleId(null);
     setActiveMissionId(null);
     traceRef.current = [];
     setTrace([]);
-  };
+  }, []);
 
   const restoreTracking = useCallback(async () => {
     const state = await TrackingService.restoreTrackingState();
     if (state.isTracking) {
+      activeTrackingRef.current = { vehicleId: state.vehicleId!, missionId: state.missionId };
       setIsTracking(true);
       setActiveVehicleId(state.vehicleId);
       setActiveMissionId(state.missionId);

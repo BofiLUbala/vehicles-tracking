@@ -10,6 +10,8 @@ export type OtpPurpose = 'signup' | 'recovery';
 export type AuthChannel = 'WHATSAPP' | 'EMAIL';
 
 export interface Driver {
+  type?: 'driver';
+  role?: RoleName;
   id: string;
   organizationId: string;
   organizationName?: string | null;
@@ -87,4 +89,3 @@ export interface RefreshTokenDto {
 export interface AuthProfileResponse {
   driver: Driver;
 }
-

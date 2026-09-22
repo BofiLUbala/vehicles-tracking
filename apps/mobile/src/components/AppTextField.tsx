@@ -77,6 +77,11 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    // `minWidth: 0` : sur le web, react-native-web rend `TextInput` en `<input>`, qui a une largeur
+    // intrinsèque de contenu (~180px) que flexbox ne réduit jamais en dessous par défaut. Sans cette
+    // ligne, deux champs `flex: 1` côte à côte (ex. Prénom/Nom) débordent sous ~360px de large — bug
+    // constaté en conditions réelles à 320px. Sans effet sur natif (déjà la valeur par défaut).
+    minWidth: 0,
     fontSize: 16,
     color: AppTheme.text,
     height: '100%',

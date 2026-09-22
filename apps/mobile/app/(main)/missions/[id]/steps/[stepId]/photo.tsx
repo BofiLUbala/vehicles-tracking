@@ -16,6 +16,7 @@ import { ValidationQueueRepository } from '../../../../../../src/database/valida
 import { BigButton } from '../../../../../../src/components/BigButton';
 import { OfflineBanner } from '../../../../../../src/components/OfflineBanner';
 import { AppTheme, AppRadius, AppShadow, AppSpacing } from '../../../../../../src/theme/colors';
+import { createClientEventId } from '../../../../../../src/utils/client-event-id';
 
 export default function PhotoCaptureScreen() {
   const { id: missionId, stepId, qrToken } = useLocalSearchParams<{
@@ -72,12 +73,19 @@ export default function PhotoCaptureScreen() {
 
     try {
       const pos = await TrackingService.getCurrentPosition();
-      const latitude = pos?.latitude ?? 0;
-      const longitude = pos?.longitude ?? 0;
-      const accuracy = pos?.accuracy ?? 0;
+      if (!pos) {
+        router.replace({
+          pathname: '/(main)/missions/[id]/steps/[stepId]/result',
+          params: { id: missionId, stepId, success: 'false', errorCode: 'GPS_UNAVAILABLE', message: 'Position GPS indisponible. Activez la localisation puis réessayez.' },
+        });
+        return;
+      }
+      const latitude = pos.latitude;
+      const longitude = pos.longitude;
+      const accuracy = pos.accuracy;
       const isMocked = pos?.isMocked ?? false;
       const recordedAt = pos?.timestamp || new Date().toISOString();
-      const clientEventId = `val_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const clientEventId = createClientEventId();
 
       const payload = {
         clientEventId,

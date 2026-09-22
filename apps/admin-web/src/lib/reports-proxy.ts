@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ACCESS_COOKIE, REFRESH_COOKIE, clearSessionCookies, isTokenExpired, setSessionCookies } from '@/lib/session';
+import { refreshAdminSession } from '@/lib/refresh-session';
 
-const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.API_BASE_URL ?? 'http://127.0.0.1:3001/api/v1';
 
 interface ResolvedToken {
   token: string;
@@ -19,20 +20,14 @@ async function resolveAccessToken(req: NextRequest): Promise<ResolvedToken | nul
   const refreshToken = req.cookies.get(REFRESH_COOKIE)?.value;
   if (!refreshToken) return null;
 
-  let upstream: Response;
+  let data;
   try {
-    upstream = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
+    data = await refreshAdminSession(refreshToken);
   } catch {
     return null;
   }
 
-  if (!upstream.ok) return null;
-
-  const data = await upstream.json();
+  if (!data) return null;
   return { token: data.accessToken, refreshed: { accessToken: data.accessToken, refreshToken: data.refreshToken } };
 }
 
@@ -47,7 +42,7 @@ export async function proxyReportDownload(req: NextRequest, upstreamPath: string
   const resolved = await resolveAccessToken(req);
   if (!resolved) {
     const res = NextResponse.json({ message: 'Non authentifié' }, { status: 401 });
-    clearSessionCookies(res);
+    if (!req.cookies.get(REFRESH_COOKIE)?.value) clearSessionCookies(res);
     return res;
   }
 

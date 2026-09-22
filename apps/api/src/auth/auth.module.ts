@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { RedisOtpStore } from './redis-otp-store.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { TrackingModule } from '../tracking/tracking.module';
 import { OTP_SENDER_EMAIL, OTP_SENDER_WHATSAPP } from './ports/otp-sender.port';
 import { StubWhatsappSender } from './senders/stub-whatsapp.sender';
 import { StubEmailSender } from './senders/stub-email.sender';
@@ -26,6 +27,7 @@ const isEmailLive = (config: ConfigService) =>
   imports: [
     PassportModule,
     JwtModule.register({}), // secrets/expiry passés explicitement à chaque sign()/verify() dans AuthService
+    TrackingModule,
   ],
   controllers: [AuthController],
   providers: [
@@ -50,6 +52,6 @@ const isEmailLive = (config: ConfigService) =>
       inject: [ConfigService, StubEmailSender, FallbackEmailSender],
     },
   ],
-  exports: [AuthService],
+  exports: [AuthService, SmtpEmailSender],
 })
 export class AuthModule {}

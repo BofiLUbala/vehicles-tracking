@@ -1,5 +1,7 @@
 export interface GpsPositionPayload {
   clientEventId: string;
+  /** Chauffeur qui a enregistré la position (le backend refuse si différent du chauffeur authentifié). */
+  driverId?: string;
   vehicleId: string;
   missionId?: string | null;
   latitude: number;

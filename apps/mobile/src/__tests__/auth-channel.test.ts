@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthApi } from '../api/auth.api';
 import { apiClient } from '../api/client';
 
+// Doit rester SUPÉRIEUR au budget d'envoi SMTP du backend (30 s) : voir EMAIL_SEND_TIMEOUT_MS.
+const EMAIL_SEND_TIMEOUT = { timeout: 45_000 };
+
 vi.mock('../api/client', () => ({
   apiClient: {
     post: vi.fn(),
@@ -57,7 +60,7 @@ describe('AuthApi Requests (password login + OTP activation/recovery only)', () 
       email: 'driver@company.cd',
       firstName: 'Gauthier',
       lastName: 'Bofi',
-    });
+    }, EMAIL_SEND_TIMEOUT);
   });
 
   it('sends Email SIGN_UP verifyOtp payload with code, password, email, name, and deviceId', async () => {
@@ -111,7 +114,7 @@ describe('AuthApi Requests (password login + OTP activation/recovery only)', () 
       mode: 'SIGN_UP',
       channel: 'WHATSAPP',
       phone: '+243989805614',
-    });
+    }, EMAIL_SEND_TIMEOUT);
   });
 
   it('sends password-reset request and verify payloads', async () => {
@@ -122,7 +125,7 @@ describe('AuthApi Requests (password login + OTP activation/recovery only)', () 
     expect(apiClient.post).toHaveBeenCalledWith('/auth/password-reset/request', {
       channel: 'WHATSAPP',
       phone: '+243989805614',
-    });
+    }, EMAIL_SEND_TIMEOUT);
 
     (apiClient.post as any).mockResolvedValueOnce({ data: { message: 'Mot de passe réinitialisé.' } });
 

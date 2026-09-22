@@ -1,26 +1,24 @@
-import { Radar } from 'lucide-react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
-/** Logo + nom de la plateforme. `inverted` = pour fond sombre (sidebar). */
+const LOGO_ALT = "Task Force Présidentielle de salubrité et d'assainissement de la ville de Kinshasa";
+
+/**
+ * Logo de la Task Force Présidentielle (fichier fourni : `public/branding/logo-task-force.jpg`,
+ * 1080x468). Le logo a un fond blanc : sur un fond sombre (`inverted`, barre latérale) il est posé
+ * sur une carte blanche pour rester net et ne jamais être déformé (ratio conservé).
+ */
 export function BrandMark({ inverted = false, className }: { inverted?: boolean; className?: string }) {
   return (
-    <div className={cn('flex items-center gap-2', className)}>
-      <div
-        className={cn(
-          'flex h-9 w-9 items-center justify-center rounded-xl',
-          inverted ? 'bg-primary text-white shadow-md shadow-primary/40' : 'bg-navy text-white',
-        )}
-      >
-        <Radar className="h-5 w-5" />
-      </div>
-      <div className="flex flex-col">
-        <p className={cn('text-sm font-bold leading-tight', inverted ? 'text-white' : 'text-foreground')}>
-          Tracking Vehicles
-        </p>
-        <p className={cn('text-2xs font-medium uppercase tracking-wider', inverted ? 'text-slate-400' : 'text-muted-foreground')}>
-          Fleet Control
-        </p>
-      </div>
+    <div className={cn(inverted ? 'rounded-xl bg-white p-2 shadow-md shadow-black/20' : '', className)}>
+      <Image
+        src="/branding/logo-task-force.jpg"
+        alt={LOGO_ALT}
+        width={1080}
+        height={468}
+        priority
+        className="h-auto w-full"
+      />
     </div>
   );
 }

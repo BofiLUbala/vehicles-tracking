@@ -27,6 +27,13 @@ export class MobileMissionsController {
   }
 
   @Roles(RoleName.DRIVER)
+  @Get('history')
+  @ApiOperation({ summary: 'Historique des missions terminées du chauffeur connecté' })
+  history(@CurrentDriver() driver: AuthenticatedPrincipal) {
+    return this.missions.historyForDriver(driver.sub);
+  }
+
+  @Roles(RoleName.DRIVER)
   @Get(':id')
   @ApiOperation({ summary: 'Détail d\'une mission du chauffeur connecté (403 si non affectée)' })
   findOne(@CurrentDriver() driver: AuthenticatedPrincipal, @Param('id') id: string) {

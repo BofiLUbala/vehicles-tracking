@@ -20,6 +20,7 @@ export function initDatabase(db: SQLite.SQLiteDatabase): void {
 
     CREATE TABLE IF NOT EXISTS pending_gps_positions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      driver_id TEXT NOT NULL DEFAULT '',
       client_event_id TEXT UNIQUE NOT NULL,
       vehicle_id TEXT NOT NULL,
       mission_id TEXT,
@@ -40,6 +41,7 @@ export function initDatabase(db: SQLite.SQLiteDatabase): void {
 
     CREATE TABLE IF NOT EXISTS pending_validations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      driver_id TEXT NOT NULL DEFAULT '',
       client_event_id TEXT UNIQUE NOT NULL,
       mission_step_id TEXT NOT NULL,
       qr_token TEXT NOT NULL,
@@ -58,6 +60,7 @@ export function initDatabase(db: SQLite.SQLiteDatabase): void {
 
     CREATE TABLE IF NOT EXISTS pending_fuel_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      driver_id TEXT NOT NULL DEFAULT '',
       client_event_id TEXT UNIQUE NOT NULL,
       vehicle_id TEXT NOT NULL,
       liters REAL NOT NULL,
@@ -77,10 +80,32 @@ export function initDatabase(db: SQLite.SQLiteDatabase): void {
       next_retry_at TEXT
     );
 
+    -- Chauffeur actuellement connecté sur cet appareil (une seule ligne). Source de vérité SYNCHRONE
+    -- pour la propriété des files hors-ligne : lisible aussi par la tâche GPS d'arrière-plan.
+    CREATE TABLE IF NOT EXISTS active_driver (
+      id INTEGER PRIMARY KEY CHECK (id = 0),
+      driver_id TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS today_missions_cache (
       id INTEGER PRIMARY KEY DEFAULT 0,
+      driver_id TEXT NOT NULL DEFAULT '',
       response_json TEXT NOT NULL,
       fetched_at TEXT NOT NULL
     );
   `);
+
+  // Migration : les bases créées avant l'introduction de la propriété n'ont pas `driver_id`. Les lignes
+  // existantes reçoivent '' (propriétaire inconnu) : elles ne correspondent à AUCUN chauffeur, donc
+  // elles ne sont jamais envoyées ni affichées — mises en quarantaine plutôt que rattachées à tort.
+  for (const table of ['pending_gps_positions', 'pending_validations', 'pending_fuel_records', 'today_missions_cache']) {
+    ensureDriverIdColumn(db, table);
+  }
+}
+
+function ensureDriverIdColumn(db: SQLite.SQLiteDatabase, table: string): void {
+  const columns = db.getAllSync<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (!columns.some((c) => c.name === 'driver_id')) {
+    db.execSync(`ALTER TABLE ${table} ADD COLUMN driver_id TEXT NOT NULL DEFAULT ''`);
+  }
 }

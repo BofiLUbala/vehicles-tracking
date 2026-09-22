@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getDeviceId } from '@/lib/device-id';
+import { clearRememberedEmail, loadRememberedEmail, saveRememberedEmail } from '@/lib/remembered-email';
 import { loginAdmin } from '@/features/auth/api';
 import { loginSchema, type LoginFormValues } from '@/features/auth/schemas';
 import Link from 'next/link';
@@ -20,8 +21,20 @@ export function LoginForm() {
 
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [rememberEmail, setRememberEmail] = useState(false);
 
   const credentialsForm = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
+
+  // Pré-remplissage APRÈS le montage : `localStorage` n'existe pas au rendu serveur, le lire dans
+  // les valeurs par défaut provoquerait une divergence d'hydratation.
+  const { setValue } = credentialsForm;
+  useEffect(() => {
+    const remembered = loadRememberedEmail();
+    if (remembered) {
+      setValue('email', remembered);
+      setRememberEmail(true);
+    }
+  }, [setValue]);
 
   async function onSubmitCredentials(values: LoginFormValues) {
     setFormError(null);
@@ -29,6 +42,9 @@ export function LoginForm() {
     try {
       const deviceId = getDeviceId();
       await loginAdmin(values.email, values.password, deviceId);
+      // Uniquement l'e-mail : le mot de passe reste au gestionnaire du navigateur.
+      if (rememberEmail) saveRememberedEmail(values.email);
+      else clearRememberedEmail();
       router.push(next);
       router.refresh();
     } catch (err) {
@@ -73,6 +89,16 @@ export function LoginForm() {
               <p className="text-sm text-destructive">{credentialsForm.formState.errors.password.message}</p>
             )}
           </div>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              name="remember-email"
+              checked={rememberEmail}
+              onChange={(e) => setRememberEmail(e.target.checked)}
+              className="h-4 w-4 rounded border-border"
+            />
+            Se souvenir de moi
+          </label>
           {formError && <p className="text-sm text-destructive">{formError}</p>}
           <Button type="submit" className="w-full" disabled={submitting}>
             {submitting ? 'Connexion…' : 'Se connecter'}

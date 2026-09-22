@@ -95,7 +95,13 @@ apiClient.interceptors.response.use(
       try {
         const refreshToken = await AuthService.getRefreshToken();
         if (!refreshToken) {
-          throw new Error('No refresh token available');
+          // Aucune session n'existe : il n'y a donc rien à fermer de force. Une requête protégée
+          // sans jeton (ex. la synchronisation GPS qui vide la file SQLite d'un ancien chauffeur
+          // pendant qu'un nouveau s'inscrit) doit simplement échouer. Déclencher la déconnexion
+          // forcée ici effaçait l'identifiant et le mot de passe de l'inscription en cours, et le
+          // bouton « Valider » devenait un no-op silencieux (défaut constaté en conditions réelles).
+          processQueue(error, null);
+          return Promise.reject(error);
         }
 
         const response = await refreshClient.post<{

@@ -3,15 +3,14 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   FlatList,
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, CheckCircle2, ClipboardList, ChevronRight } from 'lucide-react-native';
 import { MissionsApi } from '../../../src/api/missions.api';
-import { MissionsCacheRepository } from '../../../src/database/missions-cache.repository';
 import { Mission } from '../../../src/types/mission.types';
 import { StatusBadge } from '../../../src/components/StatusBadge';
 import { LoadingView } from '../../../src/components/LoadingView';
@@ -29,15 +28,10 @@ export default function HistoryScreen() {
     if (showLoader) setIsLoading(true);
     setError(null);
     try {
-      const data = await MissionsApi.getTodayMissions();
+      const data = await MissionsApi.getMissionHistory();
       setMissions(data);
     } catch {
-      const cached = MissionsCacheRepository.get();
-      if (cached && cached.length > 0) {
-        setMissions(cached);
-      } else {
-        setError('Impossible de charger l’historique. Vérifiez votre connexion puis réessayez.');
-      }
+      setError('Impossible de charger l’historique. Vérifiez votre connexion puis réessayez.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -58,12 +52,12 @@ export default function HistoryScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={20} color={AppTheme.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Historique du jour</Text>
+        <Text style={styles.headerTitle}>Historique</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -120,7 +114,7 @@ export default function HistoryScreen() {
               </View>
               <Text style={styles.emptyTitle}>Aucune mission terminée</Text>
               <Text style={styles.emptySubtitle}>
-                Les missions que vous aurez terminées aujourd&apos;hui apparaîtront ici.
+                Vos missions terminées apparaîtront ici.
               </Text>
             </View>
           }

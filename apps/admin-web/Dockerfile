@@ -8,13 +8,17 @@ COPY . .
 # envoyé au navigateur (elles ne sont plus lues au runtime pour le code client). Valeurs par
 # défaut ci-dessous pour permettre un build sans .env (ex: CI) ; docker-compose peut les
 # surcharger via des build args si des valeurs différentes sont nécessaires en prod.
-ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3001/api/v1
-ARG NEXT_PUBLIC_API_WS_URL=http://localhost:3001
+ARG NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3001/api/v1
+ARG NEXT_PUBLIC_API_WS_URL=http://127.0.0.1:3001
 ARG NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
+ARG NEXT_PUBLIC_TOMTOM_API_KEY=
+ARG NEXT_PUBLIC_TOMTOM_STYLE_VERSION=24.*
 ARG NEXT_PUBLIC_MAP_TERRAIN_URL=https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_WS_URL=$NEXT_PUBLIC_API_WS_URL
 ENV NEXT_PUBLIC_MAP_STYLE_URL=$NEXT_PUBLIC_MAP_STYLE_URL
+ENV NEXT_PUBLIC_TOMTOM_API_KEY=$NEXT_PUBLIC_TOMTOM_API_KEY
+ENV NEXT_PUBLIC_TOMTOM_STYLE_VERSION=$NEXT_PUBLIC_TOMTOM_STYLE_VERSION
 ENV NEXT_PUBLIC_MAP_TERRAIN_URL=$NEXT_PUBLIC_MAP_TERRAIN_URL
 RUN npm run build
 

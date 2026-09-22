@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,9 @@ import {
   Platform,
   ScrollView,
   TouchableOpacity,
+  Image,
 } from 'react-native';
-import { MessageCircle, Mail } from 'lucide-react-native';
+import { MessageCircle, Mail, Check } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { BigButton } from '../../src/components/BigButton';
@@ -17,6 +18,7 @@ import { AppTextField } from '../../src/components/AppTextField';
 import { AppRadius, AppShadow, AppSpacing, AppTheme } from '../../src/theme/colors';
 import { AuthChannel } from '../../src/types/auth.types';
 import { isValidEmail, isValidPhoneNumber } from '../../src/utils/phone';
+import { AuthService } from '../../src/services/auth.service';
 
 type AuthView = 'login' | 'signup' | 'recovery';
 
@@ -29,6 +31,7 @@ export default function LoginScreen() {
   const [phoneInput, setPhoneInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [rememberCredentials, setRememberCredentials] = useState(false);
   const [signupPassword, setSignupPassword] = useState('');
   const {
     loginWithPassword,
@@ -41,6 +44,17 @@ export default function LoginScreen() {
     clearNotice,
   } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    let active = true;
+    void AuthService.getRememberedCredentials().then((saved) => {
+      if (!active || !saved) return;
+      setIdentifierInput(saved.identifier);
+      setPasswordInput(saved.password);
+      setRememberCredentials(true);
+    });
+    return () => { active = false; };
+  }, []);
 
   const isSignupIdentifierValid =
     channel === 'WHATSAPP'
@@ -72,8 +86,24 @@ export default function LoginScreen() {
     clearError();
     const success = await loginWithPassword(identifierInput, passwordInput);
     if (success) {
+      try {
+        if (rememberCredentials) {
+          await AuthService.saveRememberedCredentials({ identifier: identifierInput.trim(), password: passwordInput });
+        } else {
+          await AuthService.clearRememberedCredentials();
+        }
+      } catch {
+        // La connexion reste valable si le stockage sécurisé est indisponible.
+      }
       router.replace('/(main)/permissions/gps');
     }
+  };
+
+  const toggleRememberCredentials = () => {
+    if (rememberCredentials) {
+      void AuthService.clearRememberedCredentials().catch(() => undefined);
+    }
+    setRememberCredentials((value) => !value);
   };
 
   const handleSignup = async () => {
@@ -114,9 +144,13 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.topSection}>
-            <View style={styles.brandBadge}>
-              <Text style={styles.brandBadgeText}>TRACKING VEHICLES</Text>
-            </View>
+            <Image
+              source={require('../../assets/branding/logo-task-force.jpg')}
+              style={styles.brandLogo}
+              resizeMode="contain"
+              accessibilityRole="image"
+              accessibilityLabel="Task Force Présidentielle de salubrité et d'assainissement de la ville de Kinshasa"
+            />
             <Text style={styles.welcomeText}>Bienvenue</Text>
 
             {view !== 'recovery' && (
@@ -157,20 +191,20 @@ export default function LoginScreen() {
                       view === 'signup' && styles.modeSegmentTextActive,
                     ]}
                   >
-                    Créer un compte
+                    Activer mon compte
                   </Text>
                 </TouchableOpacity>
               </View>
             )}
 
             <Text style={styles.title}>
-              {view === 'login' ? 'Connexion' : view === 'signup' ? 'Créer votre compte' : 'Mot de passe oublié'}
+              {view === 'login' ? 'Connexion' : view === 'signup' ? 'Activer votre compte' : 'Mot de passe oublié'}
             </Text>
             <Text style={styles.subtitle}>
               {view === 'login'
                 ? 'Connectez-vous avec votre identifiant et votre mot de passe.'
                 : view === 'signup'
-                  ? 'Inscrivez-vous pour rejoindre votre organisation et démarrer vos missions.'
+                  ? 'Saisissez l’adresse e-mail ou le numéro utilisé dans l’invitation, puis créez votre mot de passe.'
                   : 'Recevez un code de récupération, puis définissez un nouveau mot de passe.'}
             </Text>
 
@@ -262,6 +296,18 @@ export default function LoginScreen() {
                   }}
                   error={undefined}
                 />
+                {Platform.OS !== 'web' && <TouchableOpacity
+                  style={styles.rememberRow}
+                  onPress={toggleRememberCredentials}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: rememberCredentials }}
+                  accessibilityLabel="Se souvenir de moi sur cet appareil"
+                >
+                  <View style={[styles.rememberBox, rememberCredentials && styles.rememberBoxChecked]}>
+                    {rememberCredentials && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
+                  </View>
+                  <Text style={styles.rememberText}>Se souvenir de moi sur cet appareil</Text>
+                </TouchableOpacity>}
                 {notice ? (
                   <View style={styles.noticeContainer}>
                     <Text style={styles.noticeText}>{notice}</Text>
@@ -454,6 +500,13 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 20,
   },
+  // Logo Task Force (1080x468) : hauteur déduite du ratio pour ne jamais déformer l'emblème.
+  brandLogo: {
+    width: 260,
+    height: Math.round((260 * 468) / 1080),
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
   brandBadge: {
     backgroundColor: AppTheme.primaryLight,
     paddingHorizontal: 12,
@@ -575,6 +628,10 @@ const styles = StyleSheet.create({
   submitButton: {
     marginTop: 8,
   },
+  rememberRow: { flexDirection: 'row', alignItems: 'center', minHeight: 44, marginBottom: 4 },
+  rememberBox: { width: 21, height: 21, borderRadius: 5, borderWidth: 1.5, borderColor: AppTheme.textMuted, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  rememberBoxChecked: { backgroundColor: AppTheme.tracking, borderColor: AppTheme.tracking },
+  rememberText: { color: AppTheme.textSecondary, fontSize: 13, fontWeight: '600', flex: 1 },
   linkButton: {
     marginTop: 16,
     alignItems: 'center',

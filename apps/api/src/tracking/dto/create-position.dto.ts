@@ -14,6 +14,15 @@ export class CreatePositionDto {
   @IsUUID()
   vehicleId!: string;
 
+  @ApiProperty({
+    required: false,
+    description:
+      "Chauffeur qui a ENREGISTRÉ la position sur l'appareil. Refusée (403) si différent du chauffeur authentifié : une file hors-ligne ne peut pas être rejouée sous un autre compte.",
+  })
+  @IsOptional()
+  @IsUUID()
+  driverId?: string;
+
   @ApiProperty({ required: false, description: 'Mission en cours (optionnel — position hors mission possible)' })
   @IsOptional()
   @IsUUID()

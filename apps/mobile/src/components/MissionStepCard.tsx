@@ -22,6 +22,10 @@ interface MissionStepCardProps {
 /** Élément de la timeline du parcours mission : numéro, lieu et statut. */
 export const MissionStepCard: React.FC<MissionStepCardProps> = ({ step, index, isCurrent }) => {
   const isDone = step.status === 'VALIDATED';
+  // Certaines réponses API (endpoints admin partagés) omettent `location` : on dégrade l'affichage
+  // au lieu de faire planter le rendu de tout l'écran mission.
+  const locationName = step.location?.name ?? 'Lieu non renseigné';
+  const allowedRadius = step.location?.allowedRadius;
 
   return (
     <View style={[styles.item, isDone && styles.itemDone, isCurrent && styles.itemCurrent]}>
@@ -32,16 +36,20 @@ export const MissionStepCard: React.FC<MissionStepCardProps> = ({ step, index, i
       <View style={styles.content}>
         <View style={styles.titleRow}>
           <Text style={styles.name} numberOfLines={1}>
-            {step.location.name}
+            {locationName}
           </Text>
           <StatusBadge status={step.status} />
         </View>
         <View style={styles.metaRow}>
           <Package size={12} color={AppTheme.textMuted} />
           <Text style={styles.action}>{ACTION_LABELS[step.actionType] ?? step.actionType}</Text>
-          <View style={styles.radiusDot} />
-          <MapPin size={12} color={AppTheme.textMuted} />
-          <Text style={styles.radius}>Rayon {step.location.allowedRadius} m</Text>
+          {allowedRadius != null && (
+            <>
+              <View style={styles.radiusDot} />
+              <MapPin size={12} color={AppTheme.textMuted} />
+              <Text style={styles.radius}>Rayon {allowedRadius} m</Text>
+            </>
+          )}
         </View>
       </View>
     </View>

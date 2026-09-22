@@ -2,6 +2,8 @@ export type SyncStatus = 'pending' | 'uploading' | 'synced' | 'failed' | 'confli
 
 export interface PendingGpsPositionRow {
   id: number;
+  /** Propriétaire de la ligne (chauffeur qui l'a enregistrée). '' = ancienne ligne sans propriétaire connu. */
+  driver_id?: string;
   client_event_id: string;
   vehicle_id: string;
   mission_id?: string | null;
@@ -22,6 +24,8 @@ export interface PendingGpsPositionRow {
 
 export interface PendingValidationRow {
   id: number;
+  /** Propriétaire de la ligne (chauffeur qui l'a enregistrée). '' = ancienne ligne sans propriétaire connu. */
+  driver_id?: string;
   client_event_id: string;
   mission_step_id: string;
   qr_token: string;
@@ -40,6 +44,8 @@ export interface PendingValidationRow {
 
 export interface PendingFuelRecordRow {
   id: number;
+  /** Propriétaire de la ligne (chauffeur qui l'a enregistrée). '' = ancienne ligne sans propriétaire connu. */
+  driver_id?: string;
   client_event_id: string;
   vehicle_id: string;
   liters: number;

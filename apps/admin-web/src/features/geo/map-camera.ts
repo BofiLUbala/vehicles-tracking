@@ -13,8 +13,24 @@ export const TERRAIN_TILES_URL =
   process.env.NEXT_PUBLIC_MAP_TERRAIN_URL ??
   'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 
-/** Couche d'extrusion des bâtiments fournie par le style OpenFreeMap/OpenMapTiles (visible dès z14). */
+/** Couche d'extrusion des bâtiments du style OpenFreeMap/OpenMapTiles (visible dès z14). */
 export const BUILDINGS_3D_LAYER_ID = 'building-3d';
+
+/**
+ * Les fournisseurs ne nomment pas cette couche pareil : OpenFreeMap utilise `building-3d`, TomTom
+ * `3D - Building` (vérifié sur le style TomTom 24.*). On résout donc la couche d'extrusion par son
+ * TYPE plutôt que par un identifiant codé en dur, sinon la vue 3D reste silencieusement sans effet.
+ */
+export function findBuildings3dLayerId(map: MapLibreMap): string | null {
+  if (map.getLayer(BUILDINGS_3D_LAYER_ID)) return BUILDINGS_3D_LAYER_ID;
+  try {
+    const layers = map.getStyle()?.layers ?? [];
+    const extrusion = layers.find((l) => l.type === 'fill-extrusion');
+    return extrusion?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Zoom minimal pour une vue 3D utile : la couche `building-3d` du style n'apparaît qu'à partir du
@@ -89,10 +105,11 @@ function applyNow(map: MapLibreMap, state: DesiredState) {
     map.setTerrain(null);
   }
 
-  if (map.getLayer(BUILDINGS_3D_LAYER_ID)) {
+  const buildingsLayerId = findBuildings3dLayerId(map);
+  if (buildingsLayerId) {
     const visibility = preset.buildings3d ? 'visible' : 'none';
-    if (map.getLayoutProperty(BUILDINGS_3D_LAYER_ID, 'visibility') !== visibility) {
-      map.setLayoutProperty(BUILDINGS_3D_LAYER_ID, 'visibility', visibility);
+    if (map.getLayoutProperty(buildingsLayerId, 'visibility') !== visibility) {
+      map.setLayoutProperty(buildingsLayerId, 'visibility', visibility);
     }
   }
 

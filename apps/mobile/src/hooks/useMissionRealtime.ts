@@ -8,7 +8,7 @@ interface UseMissionRealtimeOptions {
   onMissionEvent?: () => void;
 }
 
-const MISSION_EVENTS = ['mission.started', 'mission.completed', 'mission.step.validated'];
+const MISSION_EVENTS = ['mission.assigned', 'mission.started', 'mission.completed', 'mission.step.validated'];
 
 /**
  * Abonne l'écran courant aux rooms temps réel de sa mission/véhicule et déclenche `onMissionEvent`

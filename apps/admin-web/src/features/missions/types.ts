@@ -86,11 +86,26 @@ export interface CancelMissionInput {
 }
 
 /** Référentiels utilisés pour les listes déroulantes chauffeur/véhicule (`GET /drivers`, `GET /vehicles`). */
+export interface AssignedVehicleRef {
+  id: string;
+  plateNumber: string;
+  status: string;
+}
+
+export interface ActiveMissionRef {
+  id: string;
+  status: string;
+}
+
 export interface DriverRef {
   id: string;
   firstName: string;
   lastName: string;
+  phone?: string | null;
+  email?: string | null;
   status: string;
+  currentVehicle?: AssignedVehicleRef | null;
+  activeMission?: ActiveMissionRef | null;
 }
 
 export interface VehicleRef {
@@ -99,4 +114,15 @@ export interface VehicleRef {
   brand: string | null;
   model: string | null;
   status: string;
+  activeMission?: ActiveMissionRef | null;
+}
+
+/** Un chauffeur n'est sélectionnable que s'il est ACTIVE et sans mission active. */
+export function isDriverAssignable(driver: DriverRef): boolean {
+  return driver.status === 'ACTIVE' && !driver.activeMission;
+}
+
+/** Un véhicule n'est sélectionnable que s'il est AVAILABLE et sans mission active. */
+export function isVehicleAssignable(vehicle: VehicleRef): boolean {
+  return vehicle.status === 'AVAILABLE' && !vehicle.activeMission;
 }

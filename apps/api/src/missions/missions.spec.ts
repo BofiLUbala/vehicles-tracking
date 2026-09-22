@@ -81,7 +81,7 @@ describe('MissionsService (intégration DB réelle)', () => {
 
   it('parcours complet : create -> assign -> start -> complete (toutes étapes validées) -> COMPLETED', async () => {
     const mission = await createMission();
-    expect(mission.status).toBe(MissionStatus.PLANNED);
+    expect(mission.status).toBe(MissionStatus.ASSIGNED);
     expect(mission.steps).toHaveLength(2);
 
     const assigned = await missions.assign(DEMO_ORG_ID, mission.id, { driverId, vehicleId });
@@ -120,14 +120,19 @@ describe('MissionsService (intégration DB réelle)', () => {
     const missionA = await createMission();
     await missions.assign(DEMO_ORG_ID, missionA.id, { driverId, vehicleId });
 
+    // Mission B planifiée avec un autre chauffeur ET un autre véhicule (create() refuse
+    // désormais toute mission qui chevauche une mission active).
+    const otherPlate = `MIS-${Math.floor(1000 + Math.random() * 8999)}`;
+    const otherVehicle = await prisma.vehicle.create({ data: { organizationId: DEMO_ORG_ID, plateNumber: otherPlate } });
     const missionB = await missions.create(DEMO_ORG_ID, {
       driverId: otherDriverId,
-      vehicleId,
+      vehicleId: otherVehicle.id,
       steps: [{ locationId, order: 1, actionType: 'DROPOFF' as any }],
     } as any);
     missionIds.push(missionB.id);
 
     await expect(missions.assign(DEMO_ORG_ID, missionB.id, { driverId, vehicleId })).rejects.toThrow(ConflictException);
+    await prisma.vehicle.delete({ where: { id: otherVehicle.id } }).catch(() => undefined);
   });
 
   it("refuse qu'un chauffeur non affecté démarre la mission d'un autre (403)", async () => {
@@ -166,5 +171,77 @@ describe('MissionsService (intégration DB réelle)', () => {
 
     const today = await missions.todayForDriver(driverId);
     expect(today.some((m) => m.id === mission.id)).toBe(true);
+  });
+
+  it('todayForDriver() conserve une mission active planifiée la veille', async () => {
+    const mission = await createMission();
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await prisma.mission.update({ where: { id: mission.id }, data: { plannedStart: yesterday } });
+
+    const today = await missions.todayForDriver(driverId);
+    expect(today.some((m) => m.id === mission.id)).toBe(true);
+  });
+
+  describe("create() : règles d'assignabilité (statut + conflits)", () => {
+    it("rejette un chauffeur non ACTIVE (409)", async () => {
+      await prisma.driver.update({ where: { id: driverId }, data: { status: 'SUSPENDED' } });
+      await expect(createMission()).rejects.toThrow(ConflictException);
+    });
+
+    it("rejette un véhicule non AVAILABLE (409)", async () => {
+      await prisma.vehicle.update({ where: { id: vehicleId }, data: { status: 'BROKEN_DOWN' } });
+      await expect(createMission()).rejects.toThrow(ConflictException);
+    });
+
+    it("rejette un chauffeur déjà engagé sur une mission active (409)", async () => {
+      const missionA = await createMission();
+      await missions.assign(DEMO_ORG_ID, missionA.id, { driverId, vehicleId });
+      // Même avec un véhicule libre, le chauffeur occupé bloque la création.
+      const freePlate = `MIS-${Math.floor(1000 + Math.random() * 8999)}`;
+      const freeVehicle = await prisma.vehicle.create({ data: { organizationId: DEMO_ORG_ID, plateNumber: freePlate } });
+      try {
+        await expect(
+          missions.create(DEMO_ORG_ID, {
+            driverId,
+            vehicleId: freeVehicle.id,
+            steps: [{ locationId, order: 1, actionType: 'DROPOFF' as any }],
+          } as any),
+        ).rejects.toThrow(/déjà affecté/);
+      } finally {
+        await prisma.vehicle.delete({ where: { id: freeVehicle.id } }).catch(() => undefined);
+      }
+    });
+
+    it("rejette un véhicule déjà engagé sur une mission active (409)", async () => {
+      const missionA = await createMission();
+      await missions.assign(DEMO_ORG_ID, missionA.id, { driverId, vehicleId });
+      await expect(
+        missions.create(DEMO_ORG_ID, {
+          driverId: otherDriverId,
+          vehicleId,
+          steps: [{ locationId, order: 1, actionType: 'DROPOFF' as any }],
+        } as any),
+      ).rejects.toThrow(/déjà affecté/);
+    });
+
+    it("émet mission.assigned après commit (rooms organisation + mission)", async () => {
+      const { RealtimeEventsService } = await import('../tracking/realtime-events.service');
+      const realtime = moduleRef.get(RealtimeEventsService);
+      const spy = jest.spyOn(realtime, 'emitMissionAssigned');
+      try {
+        const mission = await createMission();
+        expect(spy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            organizationId: DEMO_ORG_ID,
+            missionId: mission.id,
+            driverId,
+            vehicleId,
+            status: MissionStatus.ASSIGNED,
+          }),
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 });

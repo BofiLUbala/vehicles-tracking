@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.API_BASE_URL ?? 'http://127.0.0.1:3001/api/v1';
 
 /** Proxy vers POST /auth/password-reset/request (réponse générique, sans cookies). */
 export async function POST(req: NextRequest) {

@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import { BACKGROUND_LOCATION_TASK, ACTIVE_TRACKING_KEY } from './background-location.task';
 import { GpsQueueRepository } from '../database/gps-queue.repository';
+import { ActiveOwner } from '../database/active-owner';
 
 export interface GpsCoordinates {
   latitude: number;
@@ -20,6 +21,8 @@ class TrackingServiceClass {
   private foregroundSubscription: Location.LocationSubscription | null = null;
   private fallbackTimer: ReturnType<typeof setInterval> | null = null;
   private activeVehicleId: string | null = null;
+  /** Chauffeur qui a démarré ce suivi (propriétaire des points enregistrés). */
+  private activeDriverId: string | null = null;
   private activeMissionId: string | null = null;
   private positionListeners: Set<GpsPositionListener> = new Set();
 
@@ -91,20 +94,23 @@ class TrackingServiceClass {
   }
 
   async startTracking(vehicleId: string, missionId?: string | null): Promise<boolean> {
-    this.activeVehicleId = vehicleId;
-    this.activeMissionId = missionId || null;
-
-    // Save tracking state for background task
-    await SecureStore.setItemAsync(
-      ACTIVE_TRACKING_KEY,
-      JSON.stringify({ vehicleId, missionId: missionId || null })
-    );
-
     const permissions = await this.checkPermissions();
     if (!permissions.foregroundGranted) {
       const requested = await this.requestPermissions();
       if (!requested.foregroundGranted) return false;
     }
+
+    // Pas de suivi sans chauffeur connecté : chaque point doit avoir un propriétaire.
+    const driverId = ActiveOwner.get();
+    if (!driverId) return false;
+
+    this.activeVehicleId = vehicleId;
+    this.activeMissionId = missionId || null;
+    this.activeDriverId = driverId;
+    await SecureStore.setItemAsync(
+      ACTIVE_TRACKING_KEY,
+      JSON.stringify({ vehicleId, missionId: missionId || null, driverId })
+    );
 
     // Stop existing listeners if any
     await this.stopTrackingOnly();
@@ -152,6 +158,7 @@ class TrackingServiceClass {
         const pos = await this.getCurrentPosition();
         if (pos) {
           GpsQueueRepository.enqueue({
+            driverId: this.activeDriverId ?? undefined,
             vehicleId: this.activeVehicleId,
             missionId: this.activeMissionId,
             latitude: pos.latitude,
@@ -186,6 +193,7 @@ class TrackingServiceClass {
     };
 
     GpsQueueRepository.enqueue({
+      driverId: this.activeDriverId ?? undefined,
       vehicleId: this.activeVehicleId,
       missionId: this.activeMissionId,
       latitude: position.latitude,
@@ -226,6 +234,7 @@ class TrackingServiceClass {
     await this.stopTrackingOnly();
     this.activeVehicleId = null;
     this.activeMissionId = null;
+    this.activeDriverId = null;
     await SecureStore.deleteItemAsync(ACTIVE_TRACKING_KEY);
   }
 
@@ -238,20 +247,27 @@ class TrackingServiceClass {
       const activeTrackingJson = await SecureStore.getItemAsync(ACTIVE_TRACKING_KEY);
       if (activeTrackingJson) {
         const parsed = JSON.parse(activeTrackingJson);
-        if (parsed?.vehicleId) {
+        // Un suivi laissé par un autre chauffeur (ou par une version sans propriétaire) n'est jamais repris.
+        if (parsed?.vehicleId && (!parsed.driverId || parsed.driverId !== ActiveOwner.get())) {
+          await SecureStore.deleteItemAsync(ACTIVE_TRACKING_KEY);
+        } else if (parsed?.vehicleId) {
           this.activeVehicleId = parsed.vehicleId;
           this.activeMissionId = parsed.missionId || null;
 
           const permissions = await this.checkPermissions();
           if (permissions.foregroundGranted) {
-            await this.startTracking(parsed.vehicleId, parsed.missionId);
+            const restored = await this.startTracking(parsed.vehicleId, parsed.missionId);
+            if (restored) {
+              return {
+                isTracking: true,
+                vehicleId: parsed.vehicleId,
+                missionId: parsed.missionId || null,
+              };
+            }
           }
-
-          return {
-            isTracking: true,
-            vehicleId: parsed.vehicleId,
-            missionId: parsed.missionId || null,
-          };
+          this.activeVehicleId = null;
+          this.activeMissionId = null;
+          await SecureStore.deleteItemAsync(ACTIVE_TRACKING_KEY);
         }
       }
     } catch {

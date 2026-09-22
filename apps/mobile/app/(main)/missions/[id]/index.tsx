@@ -61,9 +61,17 @@ export default function MissionDetailScreen() {
     setStartError(null);
     try {
       const started = await MissionsApi.startMission(mission.id);
-      setMission(started);
+      // `/missions/:id/start` renvoie la forme admin : étapes sans `location` ni `validations`, et
+      // sans `vehiclePlateNumber`. L'UI mobile (MissionStepCard, écran progress) exige ces champs.
+      // On recharge donc le détail chauffeur, qui seul garantit la forme mobile complète.
+      const current = await MissionsApi.getMissionDetail(mission.id).catch(() => started);
+      setMission(current);
       // Start background & foreground GPS tracking for this mission and vehicle
-      await startTracking(started.vehicleId, started.id);
+      const trackingStarted = await startTracking(current.vehicleId, current.id);
+      if (!trackingStarted) {
+        setStartError('Mission démarrée, mais le GPS n’est pas autorisé. Activez la localisation pour continuer.');
+        return;
+      }
       router.replace(`/(main)/missions/${mission.id}/progress`);
     } catch {
       // Un échec peut simplement signifier que la mission est déjà démarrée (reprise) : on vérifie
@@ -72,7 +80,11 @@ export default function MissionDetailScreen() {
         const fresh = await MissionsApi.getMissionDetail(mission.id);
         if (fresh.status === 'STARTED' || fresh.status === 'IN_PROGRESS') {
           setMission(fresh);
-          await startTracking(fresh.vehicleId, fresh.id);
+          const trackingStarted = await startTracking(fresh.vehicleId, fresh.id);
+          if (!trackingStarted) {
+            setStartError('Mission en cours, mais le GPS n’est pas autorisé. Activez la localisation pour continuer.');
+            return;
+          }
           router.replace(`/(main)/missions/${mission.id}/progress`);
           return;
         }

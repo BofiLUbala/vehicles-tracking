@@ -9,6 +9,7 @@ export const driverFormSchema = z.object({
   firstName: z.string().min(1, 'Le prénom est requis'),
   lastName: z.string().min(1, 'Le nom est requis'),
   phone: z.string().regex(PHONE_REGEX, 'Le numéro doit être au format E.164, ex: +243999000000'),
+  email: z.string().email('Adresse e-mail invalide').optional().or(z.literal('')),
   licenseNumber: z.string().optional().or(z.literal('')),
   status: z.enum(DRIVER_STATUSES).optional(),
 });

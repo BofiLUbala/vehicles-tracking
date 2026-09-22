@@ -1,10 +1,11 @@
-import { BadRequestException, ForbiddenException, GoneException, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, GoneException, Inject, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { randomBytes, randomInt } from 'crypto';
 import { OtpChannel, OtpPurpose, RoleName } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeEventsService } from '../tracking/realtime-events.service';
 import { RedisOtpStore } from './redis-otp-store.service';
 import { OTP_SENDER_EMAIL, OTP_SENDER_WHATSAPP, OtpSenderPort } from './ports/otp-sender.port';
 import { redactSensitive } from '../common/audit-log.util';
@@ -42,6 +43,7 @@ export class AuthService {
     private readonly otpStore: RedisOtpStore,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly realtime: RealtimeEventsService,
     @Inject(OTP_SENDER_WHATSAPP) private readonly whatsappSender: OtpSenderPort,
     @Inject(OTP_SENDER_EMAIL) private readonly emailSender: OtpSenderPort,
   ) {}
@@ -162,14 +164,14 @@ export class AuthService {
       // Vérification que le compte n'existe pas déjà
       if (channel === OtpChannel.WHATSAPP) {
         const existingDriver = await this.prisma.driver.findFirst({
-          where: { phone: identifier, deletedAt: null, status: 'ACTIVE' },
+          where: { phone: identifier, deletedAt: null, status: 'ACTIVE', passwordHash: { not: null } },
         });
         if (existingDriver) {
           throw new BadRequestException('Un compte existe déjà avec ce numéro de téléphone. Connectez-vous.');
         }
       } else {
         const [existingDriver, existingUser] = await Promise.all([
-          this.prisma.driver.findFirst({ where: { email: identifier, deletedAt: null, status: 'ACTIVE' } }),
+          this.prisma.driver.findFirst({ where: { email: identifier, deletedAt: null, status: 'ACTIVE', passwordHash: { not: null } } }),
           this.prisma.user.findFirst({ where: { email: identifier, deletedAt: null, isActive: true } }),
         ]);
         if (existingDriver || existingUser) {
@@ -267,14 +269,24 @@ export class AuthService {
       if (!dto.password || dto.password.length < PASSWORD_MIN_LENGTH) {
         throw new BadRequestException('Un mot de passe d’au moins 8 caractères est requis pour activer le compte');
       }
-      // Inscription d'un nouveau chauffeur dans l'organisation
-      let organization = await this.prisma.organization.findFirst();
+      // Organisation d'accueil du nouveau chauffeur. Le CLIENT ne la choisit jamais : le backend
+      // fait foi. `DEFAULT_DRIVER_ORGANIZATION_ID` désigne l'organisation opérationnelle, afin que
+      // les chauffeurs inscrits depuis le mobile apparaissent dans l'admin de cette organisation.
+      // Sans configuration, repli déterministe sur la plus ancienne organisation : `findFirst()`
+      // sans `orderBy` renvoyait une organisation ARBITRAIRE, donc des chauffeurs pouvaient être
+      // rattachés à n'importe quel tenant (bug réel constaté en base).
+      const configuredOrganizationId = this.config.get<string>('DEFAULT_DRIVER_ORGANIZATION_ID')?.trim();
+      let organization = configuredOrganizationId
+        ? await this.prisma.organization.findUnique({ where: { id: configuredOrganizationId } })
+        : await this.prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } });
+      if (configuredOrganizationId && !organization) {
+        throw new ServiceUnavailableException(
+          "Organisation d'inscription introuvable (DEFAULT_DRIVER_ORGANIZATION_ID). Contactez l'administrateur.",
+        );
+      }
       if (!organization) {
         organization = await this.prisma.organization.create({
-          data: {
-            id: '00000000-0000-0000-0000-000000000001',
-            name: 'Régie de collecte des déchets — Kinshasa',
-          },
+          data: { name: 'Régie de collecte des déchets — Kinshasa' },
         });
       }
 
@@ -314,6 +326,14 @@ export class AuthService {
           create: { deviceId: dto.deviceId, driverId: driver.id, lastSeenAt: new Date() },
         });
       }
+
+      // PRIMARY ARCHITECTURE : le compte `Driver` existe déjà (créé/réactivé ici), aucun doublon. On
+      // prévient l'admin en temps réel pour qu'il puisse lier/inviter le chauffeur sans redémarrer.
+      this.realtime.emitDriverRegistered({
+        organizationId: driver.organizationId,
+        driverId: driver.id,
+        status: driver.status,
+      });
 
       const tokens = await this.issueTokenPair({
         sub: driver.id,
@@ -706,12 +726,26 @@ export class AuthService {
     if (principal.type === 'driver') {
       const driver = await this.prisma.driver.findUnique({
         where: { id: principal.sub },
-        include: { organization: { select: { id: true, name: true } } },
+        include: {
+          organization: { select: { id: true, name: true } },
+          assignments: {
+            where: { endedAt: null },
+            orderBy: { startedAt: 'desc' },
+            take: 1,
+            include: { vehicle: { select: { id: true, plateNumber: true } } },
+          },
+        },
       });
       if (!driver) throw new UnauthorizedException();
-      const { organization, passwordHash: _passwordHash, ...safe } = driver;
+      const { organization, assignments, passwordHash: _passwordHash, ...safe } = driver;
       void _passwordHash;
-      return { type: 'driver', ...safe, organizationName: organization?.name ?? null };
+      const currentVehicle = assignments[0]?.vehicle;
+      return {
+        type: 'driver', role: RoleName.DRIVER, ...safe,
+        organizationName: organization?.name ?? null,
+        currentVehicleId: currentVehicle?.id ?? null,
+        currentVehiclePlate: currentVehicle?.plateNumber ?? null,
+      };
     }
     const user = await this.prisma.user.findUnique({ where: { id: principal.sub }, include: { role: true } });
     if (!user) throw new UnauthorizedException();

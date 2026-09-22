@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
@@ -11,6 +11,10 @@ import { MissionForm } from '@/features/missions/mission-form';
 import { MissionsFiltersBar } from '@/features/missions/missions-filters';
 import { MissionsTable } from '@/features/missions/missions-table';
 import { createMission, fetchDrivers, fetchMissions, fetchVehicles } from '@/features/missions/api';
+import { apiErrorMessage } from '@/lib/api-client';
+import { fetchAccessToken } from '@/lib/api-client';
+import { connectTrackingSocket } from '@/features/tracking/socket';
+import { decodeJwt } from 'jose';
 import { toMissionStepInputs } from '@/features/missions/steps-field-array';
 import type { MissionFormValues } from '@/features/missions/schemas';
 import type { MissionFilters } from '@/features/missions/types';
@@ -19,6 +23,34 @@ export function MissionsPageClient() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<MissionFilters>({});
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const socketRef = useRef<ReturnType<typeof connectTrackingSocket> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function connect() {
+      try {
+        const token = await fetchAccessToken();
+        if (!token || cancelled) return;
+        const { organizationId } = decodeJwt(token) as { organizationId?: string };
+        if (!organizationId) return;
+        const socket = connectTrackingSocket(token, organizationId);
+        socketRef.current = socket;
+        const refresh = () => queryClient.invalidateQueries({ queryKey: ['missions'] });
+        socket.on('mission.assigned', refresh);
+        socket.on('mission.started', refresh);
+        socket.on('mission.step.validated', refresh);
+        socket.on('mission.completed', refresh);
+      } catch {
+        // Le tableau reste utilisable par requêtes HTTP si le canal temps réel est indisponible.
+      }
+    }
+    connect();
+    return () => {
+      cancelled = true;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, [queryClient]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['missions', filters],
@@ -50,7 +82,9 @@ export function MissionsPageClient() {
       toast.success('Mission créée.');
       setShowCreateForm(false);
     },
-    onError: () => toast.error('Impossible de créer la mission.'),
+    onError: (err) => {
+      toast.error(apiErrorMessage(err, 'Impossible de créer la mission.'));
+    },
   });
 
   const driversById = Object.fromEntries((driversQuery.data ?? []).map((d) => [d.id, d]));

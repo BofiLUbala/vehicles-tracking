@@ -57,14 +57,14 @@ export function FuelTable({ records, onSelectVehicle, selectedVehicleId }: FuelT
                     )}
                     onClick={() => onSelectVehicle(record.vehicleId)}
                   >
-                    {record.vehicle?.plateNumber ?? record.vehicleId}
+                    {record.vehicle?.plateNumber ?? record.vehiclePlateNumber ?? record.vehicleId}
                   </button>
                 ) : (
-                  <span className="font-medium text-foreground">{record.vehicle?.plateNumber ?? record.vehicleId}</span>
+                  <span className="font-medium text-foreground">{record.vehicle?.plateNumber ?? record.vehiclePlateNumber ?? record.vehicleId}</span>
                 )}
               </td>
               <td className="px-4 py-3 font-medium text-foreground">
-                {record.driver ? `${record.driver.firstName} ${record.driver.lastName}` : record.driverId}
+                {record.driver ? `${record.driver.firstName} ${record.driver.lastName}` : record.driverName ?? record.driverId}
               </td>
               <td className="px-4 py-3 text-right font-bold tabular-nums">{record.liters.toFixed(1)} L</td>
               <td className="px-4 py-3 text-right font-bold tabular-nums">{CURRENCY_FORMAT.format(record.totalCost)}</td>

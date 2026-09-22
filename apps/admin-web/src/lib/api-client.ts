@@ -1,19 +1,33 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001/api/v1';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:3001/api/v1';
 
 export const http: AxiosInstance = axios.create({ baseURL: API_BASE_URL });
 
 export type TokenFetcher = (forceRefresh?: boolean) => Promise<string | null>;
 
+let pendingNormalToken: Promise<string | null> | null = null;
+let pendingRefreshToken: Promise<string | null> | null = null;
+
 /** Récupère le token d'accès courant auprès de la route Next.js `/api/auth/token` (jamais stocké). */
 export async function fetchAccessToken(forceRefresh = false): Promise<string | null> {
-  const res = await fetch(`/api/auth/token${forceRefresh ? '?refresh=1' : ''}`, {
-    credentials: 'include',
-  });
-  if (!res.ok) return null;
-  const data = await res.json().catch(() => null);
-  return data?.accessToken ?? null;
+  const pending = forceRefresh ? pendingRefreshToken : pendingNormalToken;
+  if (pending) return pending;
+  const request = (async () => {
+    const res = await fetch(`/api/auth/token${forceRefresh ? '?refresh=1' : ''}`, { credentials: 'include' });
+    if (res.status >= 500) throw new Error('Service de connexion temporairement indisponible');
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    return typeof data?.accessToken === 'string' ? data.accessToken : null;
+  })();
+  if (forceRefresh) pendingRefreshToken = request;
+  else pendingNormalToken = request;
+  try {
+    return await request;
+  } finally {
+    if (forceRefresh) pendingRefreshToken = null;
+    else pendingNormalToken = null;
+  }
 }
 
 function defaultOnAuthFailure() {
@@ -58,8 +72,22 @@ export async function requestWithAuth<T = unknown>(
   }
 }
 
-export const apiClient = {
-  get: <T = unknown>(url: string, config?: AxiosRequestConfig) =>
+/**
+ * Message d'erreur lisible pour l'UI : préfère le message métier renvoyé par l'API
+ * (ex : conflit d'affectation 409) au message axios générique.
+ */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as { message?: unknown } | undefined;
+    const message = Array.isArray(data?.message) ? data.message[0] : data?.message;
+    if (typeof message === 'string' && message.trim()) return message;
+    if (typeof err.message === 'string' && err.message.trim()) return err.message;
+  }
+  if (err instanceof Error && err.message.trim()) return err.message;
+  return fallback;
+}
+
+export const apiClient = {  get: <T = unknown>(url: string, config?: AxiosRequestConfig) =>
     requestWithAuth<T>(http, { ...config, url, method: 'GET' }),
   post: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
     requestWithAuth<T>(http, { ...config, url, method: 'POST', data }),

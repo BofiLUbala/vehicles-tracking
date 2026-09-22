@@ -6,9 +6,10 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ScanLine, CheckCircle2, Navigation2 } from 'lucide-react-native';
+import { ArrowLeft, ScanLine, CheckCircle2, ClipboardList, MapPin, RefreshCw, ChevronDown, ChevronUp, Flag } from 'lucide-react-native';
 import { MissionsApi } from '../../../../src/api/missions.api';
 import { useTracking } from '../../../../src/context/TrackingContext';
 import { useSync } from '../../../../src/context/SyncContext';
@@ -18,12 +19,10 @@ import { GpsQueueRepository } from '../../../../src/database/gps-queue.repositor
 import { Mission } from '../../../../src/types/mission.types';
 import { MissionMap, MissionStop } from '../../../../src/components/MissionMap';
 import { MissionStepCard } from '../../../../src/components/MissionStepCard';
-import { GpsStatusPill } from '../../../../src/components/GpsStatusPill';
-import { SyncStatusPill } from '../../../../src/components/SyncStatusPill';
 import { BigButton } from '../../../../src/components/BigButton';
 import { LoadingView } from '../../../../src/components/LoadingView';
 import { ErrorView } from '../../../../src/components/ErrorView';
-import { AppRadius, AppShadow, AppTheme } from '../../../../src/theme/colors';
+import { AppRadius, AppTheme } from '../../../../src/theme/colors';
 
 const ACTION_LABELS: Record<string, string> = {
   COLLECT: 'Collecte de déchets',
@@ -38,10 +37,23 @@ export default function MissionProgressScreen() {
   const [mission, setMission] = useState<Mission | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { isTracking, startTracking, currentGps, trace, appendTracePoint, setTraceFromServer } = useTracking();
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [completionError, setCompletionError] = useState<string | null>(null);
+  const [showSteps, setShowSteps] = useState(false);
+  const [plannedRoute, setPlannedRoute] = useState<{ latitude: number; longitude: number }[]>([]);
+  const { height: screenHeight } = useWindowDimensions();
+  const { isTracking, startTracking, stopTracking, currentGps, trace, appendTracePoint, setTraceFromServer } = useTracking();
   const { isConnected, isSyncing, counts } = useSync();
   const router = useRouter();
   const listenerRef = useRef<(() => void) | null>(null);
+
+  // Itinéraire planifié : un seul appel par mission (jamais par point GPS), en arrière-plan.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    MissionsApi.getPlannedRoute(id).then((points) => { if (!cancelled) setPlannedRoute(points); });
+    return () => { cancelled = true; };
+  }, [id]);
 
   const loadMission = useCallback(async () => {
     if (!id) return;
@@ -136,6 +148,9 @@ export default function MissionProgressScreen() {
   const currentStepIndex = sortedSteps.findIndex((s) => s.status !== 'VALIDATED');
   const isAllCompleted = currentStepIndex === -1;
   const currentStep = isAllCompleted ? null : sortedSteps[currentStepIndex];
+  const completedCount = sortedSteps.filter((step) => step.status === 'VALIDATED').length;
+  const syncLabel = !isConnected ? 'Hors ligne' : isSyncing ? 'Synchronisation…' : counts.total > 0 ? `${counts.total} en attente` : 'À jour';
+  const missionActive = mission.status === 'STARTED' || mission.status === 'IN_PROGRESS';
 
   const mapStops: MissionStop[] = sortedSteps.map((step) => ({
     id: step.id,
@@ -147,6 +162,21 @@ export default function MissionProgressScreen() {
     actionType: step.actionType,
   }));
 
+  const completeMission = async () => {
+    setIsCompleting(true);
+    setCompletionError(null);
+    try {
+      await MissionsApi.completeMission(mission.id);
+      await stopTracking();
+      router.replace('/(main)/history');
+    } catch (err: any) {
+      const message = err?.response?.data?.message;
+      setCompletionError(typeof message === 'string' ? message : 'Impossible de terminer la mission. Réessayez.');
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -155,100 +185,74 @@ export default function MissionProgressScreen() {
           onPress={() => router.back()}
           style={styles.backBtn}
         >
-          <ArrowLeft size={20} color={AppTheme.text} />
+          <ArrowLeft size={21} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Mission en cours</Text>
-          {mission.vehiclePlateNumber && (
-            <Text style={styles.headerSub}>{mission.vehiclePlateNumber}</Text>
-          )}
+          <Text style={styles.headerTitle}>Ma mission</Text>
+          <Text style={styles.headerSub}>{mission.vehiclePlateNumber || `#${mission.id.slice(0, 8).toUpperCase()}`}</Text>
         </View>
-        <GpsStatusPill isTracking={isTracking} traceCount={trace.length} />
+        <View style={styles.livePill}><View style={styles.liveDot} /><Text style={styles.liveText}>{missionActive ? 'En direct' : 'Mission'}</Text></View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {isTracking && (
-          <MissionMap
-            currentGps={currentGps}
-            trace={trace}
-            stops={mapStops}
-            currentStepIndex={currentStepIndex >= 0 ? currentStepIndex : sortedSteps.length}
-          />
-        )}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <MissionMap
+          height={Math.max(260, Math.min(screenHeight * 0.4, 380))}
+          currentGps={currentGps}
+          trace={trace}
+          stops={mapStops}
+          plannedRoute={plannedRoute}
+          currentStepIndex={currentStepIndex >= 0 ? currentStepIndex : sortedSteps.length}
+          onSettingsPress={() => router.push('/(main)/permissions/gps')}
+        />
 
-        {!isTracking && (
-          <View style={styles.trackingCard}>
-            <Navigation2 size={18} color={AppTheme.textMuted} />
-            <View style={styles.trackingInfo}>
-              <Text style={styles.trackingTitle}>Positionnement standard</Text>
-              <Text style={styles.trackingSubtitle}>
-                Le suivi par point sera actif au démarrage de la mission.
-              </Text>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.titleRow}>
+            <View style={styles.titleIcon}><ClipboardList size={22} color="#FFFFFF" /></View>
+            <View style={styles.titleText}>
+              <Text style={styles.sheetTitle}>Mission active</Text>
+              <Text style={styles.missionCode}>#{mission.id.slice(0, 8).toUpperCase()} · {mission.vehiclePlateNumber || 'Véhicule assigné'}</Text>
+              <Text style={styles.missionMeta}>{completedCount} / {sortedSteps.length} étapes terminées</Text>
             </View>
           </View>
-        )}
 
-        {currentStep && (
-          <View style={styles.currentStepCard}>
-            <View style={styles.currentStepBadge}>
-              <Text style={styles.currentStepBadgeText}>
-                ÉTAPE {currentStepIndex + 1} / {sortedSteps.length}
-              </Text>
+          {currentStep ? (
+            <View style={styles.stepHighlight}>
+              <View style={styles.stepNumber}><Text style={styles.stepNumberText}>{currentStep.order}</Text></View>
+              <View style={styles.stepText}>
+                <Text style={styles.eyebrow}>ÉTAPE ACTUELLE · {ACTION_LABELS[currentStep.actionType] ?? currentStep.actionType}</Text>
+                <Text style={styles.stepName} numberOfLines={1}>{currentStep.location.name}</Text>
+                <Text style={styles.stepAddress} numberOfLines={1}>{currentStep.location.address || `Rayon autorisé : ${currentStep.location.allowedRadius} m`}</Text>
+              </View>
+              <MapPin size={18} color={AppTheme.warning} />
             </View>
+          ) : (
+            <View style={styles.stepHighlight}><CheckCircle2 size={25} color={AppTheme.success} /><Text style={[styles.stepName, { marginLeft: 12 }]}>Toutes les étapes sont validées</Text></View>
+          )}
 
-            <Text style={styles.currentStepAction}>
-              {ACTION_LABELS[currentStep.actionType] ?? currentStep.actionType}
-            </Text>
-            <Text style={styles.currentStepLocationName}>{currentStep.location.name}</Text>
-            {currentStep.location.address && (
-              <Text style={styles.currentStepAddress}>{currentStep.location.address}</Text>
-            )}
-
-            <View style={styles.radiusPill}>
-              <Text style={styles.radiusText}>
-                Rayon de validation autorisé : {currentStep.location.allowedRadius} m
-              </Text>
-            </View>
-
-            <BigButton
-              label="Scanner le QR code du site"
-              icon={<ScanLine size={20} color="#FFFFFF" />}
-              onPressed={() =>
-                router.push(`/(main)/missions/${mission.id}/steps/${currentStep.id}/scan`)
-              }
-            />
+          <View style={styles.infoRow}>
+            <MapPin size={20} color={isTracking ? AppTheme.success : AppTheme.textMuted} />
+            <View style={styles.infoText}><Text style={styles.infoTitle}>GPS {isTracking ? 'actif' : 'inactif'}</Text><Text style={styles.infoSubtitle}>{isTracking ? 'Position transmise' : 'Localisation indisponible'}</Text></View>
+            {currentGps?.accuracy != null && <Text style={styles.infoRight}>± {Math.round(currentGps.accuracy)} m</Text>}
           </View>
-        )}
-
-        {isAllCompleted && (
-          <View style={styles.completedBox}>
-            <View style={styles.completedIconWrap}>
-              <CheckCircle2 size={40} color={AppTheme.success} />
-            </View>
-            <Text style={styles.completedTitle}>Étapes toutes validées !</Text>
-            <Text style={styles.completedSubtitle}>
-              Vous avez terminé l&apos;ensemble du parcours prévu pour cette mission.
-            </Text>
-            <BigButton
-              label="Retour aux missions du jour"
-              variant="secondary"
-              onPressed={() => router.replace('/(main)/missions')}
-              style={styles.completedButton}
-            />
+          <View style={styles.infoRow}>
+            <RefreshCw size={20} color={isConnected ? AppTheme.tracking : AppTheme.textMuted} />
+            <View style={styles.infoText}><Text style={styles.infoTitle}>Synchronisation</Text><Text style={styles.infoSubtitle}>{isConnected ? 'Données de la mission connectées' : 'Envoi dès le retour du réseau'}</Text></View>
+            <Text style={[styles.syncBadge, !isConnected && styles.syncOffline]}>{syncLabel}</Text>
           </View>
-        )}
 
-        <View style={styles.syncRow}>
-          <Text style={styles.timelineTitle}>Parcours de la mission</Text>
-          <SyncStatusPill
-            state={isSyncing ? 'syncing' : !isConnected ? 'offline' : counts.total > 0 ? 'pending' : 'online'}
-            pendingCount={counts.total}
-          />
+          {currentStep ? (
+            <BigButton label="Scanner le QR code du site" icon={<ScanLine size={20} color="#FFFFFF" />} onPressed={() => router.push(`/(main)/missions/${mission.id}/steps/${currentStep.id}/scan`)} style={styles.primaryAction} />
+          ) : (
+            <BigButton label="Terminer la mission" icon={<Flag size={20} color="#FFFFFF" />} isLoading={isCompleting} onPressed={completeMission} style={styles.finishAction} />
+          )}
+          {completionError && <Text style={styles.completionError}>{completionError}</Text>}
+          <TouchableOpacity onPress={() => setShowSteps((value) => !value)} style={styles.stepsToggle} accessibilityRole="button" accessibilityLabel={showSteps ? 'Masquer les étapes' : 'Voir toutes les étapes'}>
+            <Text style={styles.stepsToggleText}>{showSteps ? 'Masquer les étapes' : 'Voir toutes les étapes'}</Text>
+            {showSteps ? <ChevronUp size={18} color={AppTheme.tracking} /> : <ChevronDown size={18} color={AppTheme.tracking} />}
+          </TouchableOpacity>
+          {showSteps && sortedSteps.map((step, index) => <MissionStepCard key={step.id} step={step} index={index} isCurrent={index === currentStepIndex} />)}
         </View>
-
-        {sortedSteps.map((step, index) => (
-          <MissionStepCard key={step.id} step={step} index={index} isCurrent={index === currentStepIndex} />
-        ))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -257,23 +261,21 @@ export default function MissionProgressScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: AppTheme.background,
+    backgroundColor: AppTheme.navyLight,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: AppTheme.card,
-    borderBottomWidth: 1,
-    borderBottomColor: AppTheme.border,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    backgroundColor: AppTheme.navyLight,
   },
   backBtn: {
     width: 38,
     height: 38,
     borderRadius: AppRadius.md,
-    backgroundColor: AppTheme.subtle,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -284,18 +286,48 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: AppTheme.text,
+    color: '#FFFFFF',
   },
   headerSub: {
     fontSize: 12,
-    color: AppTheme.textSecondary,
+    color: '#BFD4F0',
     fontWeight: '600',
     marginTop: 1,
   },
   content: {
-    padding: 16,
-    paddingBottom: 40,
+    backgroundColor: AppTheme.background,
+    paddingBottom: 30,
   },
+  livePill: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#087A4A', paddingHorizontal: 11, paddingVertical: 6, borderRadius: AppRadius.pill },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#63E6A2', marginRight: 6 },
+  liveText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  sheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -22, paddingHorizontal: 17, paddingTop: 8, paddingBottom: 22, shadowColor: '#0B1F33', shadowOffset: { width: 0, height: -5 }, shadowOpacity: 0.12, shadowRadius: 14, elevation: 9 },
+  sheetHandle: { width: 38, height: 4, borderRadius: 2, backgroundColor: '#D6DEE9', alignSelf: 'center', marginBottom: 15 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  titleIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: AppTheme.tracking, justifyContent: 'center', alignItems: 'center', marginRight: 11 },
+  titleText: { flex: 1 },
+  sheetTitle: { fontSize: 17, fontWeight: '800', color: AppTheme.navy },
+  missionCode: { fontSize: 13, fontWeight: '700', color: AppTheme.navyLight, marginTop: 2 },
+  missionMeta: { fontSize: 12, color: AppTheme.textSecondary, marginTop: 2 },
+  stepHighlight: { minHeight: 69, backgroundColor: '#F3F6FB', borderRadius: 12, padding: 11, flexDirection: 'row', alignItems: 'center', marginBottom: 9 },
+  stepNumber: { width: 30, height: 30, borderRadius: 15, backgroundColor: AppTheme.warning, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  stepNumberText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  stepText: { flex: 1, minWidth: 0 },
+  eyebrow: { color: AppTheme.tracking, fontSize: 10, fontWeight: '800', marginBottom: 2 },
+  stepName: { color: AppTheme.navy, fontSize: 14, fontWeight: '800' },
+  stepAddress: { color: AppTheme.textSecondary, fontSize: 11, marginTop: 2 },
+  infoRow: { minHeight: 52, borderBottomWidth: 1, borderBottomColor: AppTheme.border, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
+  infoText: { flex: 1, marginLeft: 11 },
+  infoTitle: { fontSize: 13, color: AppTheme.navy, fontWeight: '800' },
+  infoSubtitle: { fontSize: 11, color: AppTheme.textSecondary, marginTop: 1 },
+  infoRight: { color: AppTheme.textSecondary, fontSize: 11, fontWeight: '700' },
+  syncBadge: { color: '#087A4A', backgroundColor: '#DBF6E8', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 12, fontSize: 11, fontWeight: '800', overflow: 'hidden' },
+  syncOffline: { color: AppTheme.textSecondary, backgroundColor: AppTheme.subtle },
+  primaryAction: { marginTop: 14, backgroundColor: AppTheme.tracking },
+  finishAction: { marginTop: 14, backgroundColor: AppTheme.danger },
+  completionError: { color: AppTheme.danger, marginTop: 10, fontSize: 12 },
+  stepsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 15 },
+  stepsToggleText: { color: AppTheme.tracking, fontSize: 13, fontWeight: '700', marginRight: 5 },
   trackingCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -327,7 +359,6 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: AppTheme.tracking,
-    ...AppShadow.pop,
     marginBottom: 20,
   },
   currentStepBadge: {

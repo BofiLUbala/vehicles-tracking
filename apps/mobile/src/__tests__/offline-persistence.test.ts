@@ -14,7 +14,8 @@ describe('Offline Persistence & Database Operations', () => {
       execSync: vi.fn(),
       runSync: vi.fn(),
       getAllSync: vi.fn(() => []),
-      getFirstSync: vi.fn(() => ({ count: 0 })),
+      // `driver_id` : un chauffeur est connecté (les files hors-ligne exigent un propriétaire).
+      getFirstSync: vi.fn(() => ({ count: 0, driver_id: 'driver-A' })),
     };
 
     setDatabaseInstanceForTest(mockDb);
@@ -93,7 +94,7 @@ describe('Offline Persistence & Database Operations', () => {
         photoPath: 'file:///path/photo.jpg',
       });
 
-      expect(clientEventId).toMatch(/^val_\d+_/);
+      expect(clientEventId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
       expect(mockDb.runSync).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR IGNORE INTO pending_validations'),
         expect.arrayContaining(['step-10', 'signed-qr-token-abc', 'file:///path/photo.jpg'])
@@ -122,7 +123,7 @@ describe('Offline Persistence & Database Operations', () => {
         odometerPhotoPath: 'file:///odometer.jpg',
       });
 
-      expect(clientEventId).toMatch(/^fuel_\d+_/);
+      expect(clientEventId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
       expect(mockDb.runSync).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR IGNORE INTO pending_fuel_records'),
         expect.arrayContaining(['veh-5', 60, 150000, 85000, 'DIESEL', 'file:///receipt.jpg', 'file:///odometer.jpg'])
