@@ -82,6 +82,13 @@
         "projectId": "b583be12-e650-4a71-b47c-c0b24ee80e75"
       }
     },
-    "owner": "e-attendance"
+    "owner": "e-attendance",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/b583be12-e650-4a71-b47c-c0b24ee80e75",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }

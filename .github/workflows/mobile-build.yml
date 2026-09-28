@@ -1,23 +1,83 @@
-name: Mobile build (EAS)
+name: Mobile deploy (EAS)
 
-# Build Android dans le cloud Expo, sans poste de développeur.
-#  - `preview-online` : APK installable directement, branché sur l'API de production ;
-#  - `production`      : AAB pour le Play Store.
-# Prérequis unique : secret de dépôt EXPO_TOKEN (expo.dev -> Account settings -> Access tokens).
+# Livraison continue de l'application mobile, sans poste de développeur.
+#
+# Automatique, à chaque push sur main touchant apps/mobile (tests verts) :
+#   - seul le JavaScript a changé  -> mise à jour OTA (EAS Update, canal `preview`) : les
+#     téléphones la reçoivent au prochain lancement, sans réinstaller ;
+#   - le code natif a changé (empreinte « fingerprint » différente) -> nouvel APK
+#     `preview-online` construit dans le cloud Expo, puis les mises à jour suivantes s'y appliquent.
+#
+# Manuel (Run workflow) : build `production` (AAB Play Store).
+#
+# Prérequis : secret de dépôt EXPO_TOKEN ; variables EXPO_PUBLIC_* définies dans les
+# environnements EAS `preview` / `production` (expo.dev -> projet -> Environment variables).
 
 on:
+  push:
+    branches: [main]
+    paths: ['apps/mobile/**', '.github/workflows/mobile-build.yml']
   workflow_dispatch:
     inputs:
       profile:
-        description: Profil EAS
+        description: Build manuel
         type: choice
-        options: [preview-online, production]
-        default: preview-online
-  push:
-    tags: ['mobile-v*'] # un tag mobile-v1.2.0 lance un build production
+        options: [production, preview-online]
+        default: production
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: mobile-deploy
+  cancel-in-progress: false
 
 jobs:
-  build:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck && npm test
+
+  continuous-deploy:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci
+        working-directory: apps/mobile
+      - name: OTA update, ou nouvel APK si le natif a changé
+        uses: expo/expo-github-action/continuous-deploy-fingerprint@main
+        with:
+          working-directory: apps/mobile
+          profile: preview-online
+          branch: preview
+          environment: preview
+          platform: android
+
+  manual-build:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,6 +94,5 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
-      - run: npm run typecheck && npm test
-      - name: 'Build EAS (sans attendre la fin, suivi sur expo.dev)'
-        run: eas build --platform android --non-interactive --no-wait --profile "${{ inputs.profile || 'production' }}"
+      - name: 'Build EAS (suivi sur expo.dev)'
+        run: eas build --platform android --non-interactive --no-wait --profile "${{ inputs.profile }}"
