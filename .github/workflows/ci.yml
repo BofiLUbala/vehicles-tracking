@@ -31,18 +31,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      minio:
-        # L'image officielle minio/minio exige des arguments de commande ("server /data"), que les
-        # "services" GitHub Actions ne permettent pas de fournir (seuls image/env/ports/options sont
-        # configurables, pas command/entrypoint). On utilise donc bitnami/minio, qui démarre le
-        # serveur uniquement via variables d'environnement — même API S3 sur le port 9000.
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin123
-          MINIO_DEFAULT_BUCKETS: tracking-vehicles
-        ports:
-          - 9000:9000
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tracking_vehicles_test
       REDIS_URL: redis://localhost:6379
@@ -76,11 +64,19 @@ jobs:
           cache-dependency-path: apps/api/package-lock.json
       - run: npm ci
         working-directory: apps/api
-      - name: Attendre que MinIO réponde
+      # MinIO démarré par `docker run` (et non comme « service ») : l'image officielle exige la
+      # commande `server /data`, que les services GitHub Actions ne permettent pas de passer.
+      # (bitnami/minio, utilisé auparavant, a été retiré de Docker Hub.)
+      - name: Démarrer MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000             -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin123             quay.io/minio/minio:latest server /data
+      - name: Attendre que MinIO réponde et créer le bucket
         run: |
           for i in $(seq 1 30); do
             if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
               echo "MinIO prêt"
+              docker exec minio mc alias set local http://localhost:9000 minioadmin minioadmin123
+              docker exec minio mc mb -p local/tracking-vehicles
               exit 0
             fi
             sleep 2
@@ -124,7 +120,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci
