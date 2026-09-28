@@ -34,7 +34,10 @@ services:
       retries: 5
 
   minio:
-    image: quay.io/minio/minio:latest
+    # Les images officielles MinIO ne sont plus publiées (Docker Hub et Quay). Silo (pgsty/minio)
+    # est un fork maintenu, compatible (même commande, mêmes données, `mc` inclus) ; version
+    # épinglée pour ne jamais changer de stockage sans le décider.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY}
