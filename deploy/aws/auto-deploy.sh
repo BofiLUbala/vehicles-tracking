@@ -15,7 +15,9 @@ exec 9>"$LOCK"
 flock -n 9 || exit 0 # un déploiement est déjà en cours
 
 C="docker compose -f docker-compose.yml --env-file .env"
-IMAGE=$($C config --images api | head -1)
+# Image du service api lue dans le compose (`config --images` liste TOUS les services).
+IMAGE=$(awk '/^  api:/{f=1;next} f&&/^  [a-z]/{exit} f&&$1=="image:"{print $2;exit}' docker-compose.yml)
+[ -n "$IMAGE" ] || { echo "$(date -Is) image api introuvable dans docker-compose.yml"; exit 1; }
 log() { echo "$(date -Is) $*"; }
 
 current=$(docker image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null || echo none)
