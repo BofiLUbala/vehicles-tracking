@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 
-const WS_URL = process.env.NEXT_PUBLIC_API_WS_URL ?? 'http://127.0.0.1:3001';
+const WS_URL = (process.env.NEXT_PUBLIC_API_WS_URL || '').replace(/\/+$/, '');
 
 /**
  * Ouvre la connexion Socket.IO vers la passerelle de suivi temps réel (namespace `/tracking`) et
@@ -13,7 +13,7 @@ const WS_URL = process.env.NEXT_PUBLIC_API_WS_URL ?? 'http://127.0.0.1:3001';
  * par le gateway à la connexion ; l'abonnement explicite ci-dessous est sans effet néfaste (idempotent).
  */
 export function connectTrackingSocket(accessToken: string, organizationId: string): Socket {
-  const socket = io(`${WS_URL}/tracking`, {
+  const socket = io(WS_URL ? `${WS_URL}/tracking` : '/tracking', {
     transports: ['websocket'],
     auth: { token: accessToken },
     autoConnect: true,

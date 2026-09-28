@@ -7,6 +7,7 @@ import { normalizePhoneNumber, isValidEmail, isValidPhoneNumber } from '../utils
 import { WebSocketService } from '../services/websocket.service';
 import { TrackingService } from '../services/tracking.service';
 import { ActiveOwner } from '../database/active-owner';
+import { API_BASE_URL } from '../utils/env';
 
 export type AuthStatus = 'unknown' | 'unauthenticated' | 'otp_requested' | 'authenticated';
 
@@ -56,6 +57,18 @@ function firstMessage(err: any): string {
   return (Array.isArray(rawMessage) ? rawMessage[0] : rawMessage) || '';
 }
 
+
+/**
+ * Message d'erreur réseau. L'URL de l'API est FIGÉE À LA COMPILATION (profil `eas.json`) : un APK
+ * construit avec une adresse LAN devient injoignable dès que le téléphone quitte ce Wi-Fi, et le
+ * chauffeur ne voyait alors qu'un message générique. On affiche donc l'hôte réellement appelé, seul
+ * moyen de distinguer « pas de réseau » de « APK pointant vers le mauvais serveur ».
+ */
+function networkErrorMessage(): string {
+  const host = API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
+  return `Impossible de contacter le serveur (${host}). Vérifiez votre connexion Internet.`;
+}
+
 function mapLoginError(err: any): string {
   const status = err.response?.status;
   const messageStr = firstMessage(err);
@@ -73,7 +86,7 @@ function mapLoginError(err: any): string {
     return 'Identifiant ou mot de passe incorrect.';
   }
   if (!err.response) {
-    return 'Impossible de contacter le serveur. Vérifiez votre connexion Internet.';
+    return networkErrorMessage();
   }
   return messageStr || 'Une erreur est survenue. Veuillez réessayer.';
 }
@@ -113,7 +126,7 @@ function mapOtpError(err: any, channel: AuthChannel): string {
     return 'Le service d’envoi est momentanément indisponible. Veuillez réessayer.';
   }
   if (!err.response) {
-    return 'Impossible de contacter le serveur. Vérifiez votre connexion Internet.';
+    return networkErrorMessage();
   }
 
   return messageStr || 'Une erreur est survenue. Veuillez réessayer.';

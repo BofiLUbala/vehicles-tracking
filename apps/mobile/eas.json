@@ -34,8 +34,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.tracking-vehicles.local/api/v1",
-        "EXPO_PUBLIC_WS_URL": "https://api.tracking-vehicles.local"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.46-137-0-222.sslip.io/api/v1",
+        "EXPO_PUBLIC_WS_URL": "https://api.46-137-0-222.sslip.io"
       }
     }
   },

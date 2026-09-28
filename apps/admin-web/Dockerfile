@@ -1,15 +1,26 @@
+# syntax=docker/dockerfile:1.7
 # --- Stage 1 : build ---
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# Le cache BuildKit évite de retélécharger tous les paquets lorsqu'un build est relancé.
+# Les délais et tentatives supplémentaires absorbent les coupures réseau temporaires du
+# registre npm (ECONNRESET), fréquentes sur une connexion lente ou instable.
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline --no-audit \
+      --fetch-retries=5 \
+      --fetch-retry-mintimeout=20000 \
+      --fetch-retry-maxtimeout=120000 \
+      --fetch-timeout=600000
 COPY . .
 # NEXT_PUBLIC_* doivent être présentes au moment du build : Next.js les inline dans le bundle JS
 # envoyé au navigateur (elles ne sont plus lues au runtime pour le code client). Valeurs par
 # défaut ci-dessous pour permettre un build sans .env (ex: CI) ; docker-compose peut les
 # surcharger via des build args si des valeurs différentes sont nécessaires en prod.
-ARG NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3001/api/v1
-ARG NEXT_PUBLIC_API_WS_URL=http://127.0.0.1:3001
+# Dans l'image Docker, le navigateur passe par nginx sur la même origine. Des URLs relatives
+# fonctionnent donc avec localhost, l'adresse LAN du PC et, plus tard, le domaine de production.
+ARG NEXT_PUBLIC_API_BASE_URL=/api/v1
+ARG NEXT_PUBLIC_API_WS_URL=
 ARG NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
 ARG NEXT_PUBLIC_TOMTOM_API_KEY=
 ARG NEXT_PUBLIC_TOMTOM_STYLE_VERSION=24.*

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 FROM node:20-alpine AS builder
 WORKDIR /app
 # openssl requis dès la génération du client Prisma : `prisma generate` sonde la version
@@ -6,7 +7,12 @@ WORKDIR /app
 # runtime (voir plus bas) où l'absence totale d'OpenSSL fait planter le client au démarrage.
 RUN apk add --no-cache openssl
 COPY package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline --no-audit \
+      --fetch-retries=5 \
+      --fetch-retry-mintimeout=20000 \
+      --fetch-retry-maxtimeout=120000 \
+      --fetch-timeout=600000
 COPY . .
 RUN npx prisma generate && npm run build
 

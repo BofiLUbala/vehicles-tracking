@@ -64,7 +64,7 @@ export default function GpsPermissionScreen() {
             <View style={styles.bulletContent}>
               <Text style={styles.bulletTitle}>Suivi en arrière-plan</Text>
               <Text style={styles.bulletDesc}>
-                Enregistre l&apos;itinéraire du camion même lorsque l&apos;écran de votre téléphone est éteint.
+                Pendant une mission active, cette application collecte votre position même lorsque l&apos;application est fermée ou non utilisée, afin d&apos;enregistrer l&apos;itinéraire du camion. Le suivi s&apos;arrête à la fin de la mission.
               </Text>
             </View>
           </View>

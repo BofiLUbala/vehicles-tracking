@@ -1,0 +1,21 @@
+# API NestJS (REST /api/v1, /health, Socket.IO) — Caddy gère le WebSocket nativement.
+{$API_DOMAIN} {
+	encode gzip
+	# Pages publiques statiques (politique de confidentialité exigée par Google Play).
+	handle /privacy* {
+		root * /srv/public
+		file_server
+	}
+	handle {
+		reverse_proxy api:3001
+	}
+}
+
+# MinIO (API S3) : les URL signées des photos pointent ici, elles doivent être joignables
+# depuis les téléphones. L'en-tête Host est conservé tel quel, sinon la signature ne correspond plus.
+{$FILES_DOMAIN} {
+	request_body {
+		max_size 50MB
+	}
+	reverse_proxy minio:9000
+}
