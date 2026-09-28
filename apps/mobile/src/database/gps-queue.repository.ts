@@ -20,6 +20,17 @@ export interface EnqueueGpsParams {
   recordedAt?: string;
 }
 
+/** Position encore en file locale pour une mission (restauration de la trace à l'écran). */
+export interface MissionQueuedPosition {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  speed: number | null;
+  heading: number | null;
+  is_mocked: number;
+  recorded_at: string;
+}
+
 export const GpsQueueRepository = {
   enqueue(params: EnqueueGpsParams): void {
     // Aucun chauffeur connecté => la position n'a pas de propriétaire : on ne l'enregistre pas plutôt que
@@ -145,12 +156,12 @@ export const GpsQueueRepository = {
     return row?.count || 0;
   },
 
-  getMissionPositions(missionId: string): { latitude: number; longitude: number; recorded_at: string }[] {
+  getMissionPositions(missionId: string): MissionQueuedPosition[] {
     const owner = ActiveOwner.get();
     if (!owner) return [];
     const db = getDatabase();
-    return db.getAllSync<{ latitude: number; longitude: number; recorded_at: string }>(
-      `SELECT latitude, longitude, recorded_at FROM pending_gps_positions 
+    return db.getAllSync<MissionQueuedPosition>(
+      `SELECT latitude, longitude, accuracy, speed, heading, is_mocked, recorded_at FROM pending_gps_positions 
        WHERE driver_id = ? AND mission_id = ? 
        ORDER BY recorded_at ASC`,
       [owner, missionId]

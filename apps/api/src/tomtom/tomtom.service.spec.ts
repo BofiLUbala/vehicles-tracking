@@ -146,4 +146,23 @@ describe('TomTomService', () => {
     await expect(makeService().snapToRoads(many)).rejects.toMatchObject({ kind: 'INVALID_INPUT' });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('reverse geocodes once per ~11 m cell and returns a readable address', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        addresses: [{ address: { streetNumber: '12', streetName: 'Avenue du Commerce', municipality: 'Kinshasa', freeformAddress: '12 Avenue du Commerce, Kinshasa' } }],
+      }),
+    );
+    const svc = makeService();
+    const r = await svc.reverseGeocode(A);
+    expect(r).toEqual({ address: '12 Avenue du Commerce, Kinshasa', street: '12 Avenue du Commerce', municipality: 'Kinshasa' });
+    await svc.reverseGeocode({ latitude: A.latitude + 0.00001, longitude: A.longitude });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain('/search/2/reverseGeocode/-4.3200,15.3100.json');
+  });
+
+  it('reverse geocode returns nulls when TomTom knows no address', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { addresses: [] }));
+    expect(await makeService().reverseGeocode(B)).toEqual({ address: null, street: null, municipality: null });
+  });
 });

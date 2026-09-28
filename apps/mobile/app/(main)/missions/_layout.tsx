@@ -17,6 +17,7 @@ export default function MissionsStackLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="[id]/index" />
       <Stack.Screen name="[id]/progress" />
+      <Stack.Screen name="[id]/trip" />
       <Stack.Screen name="[id]/steps/[stepId]/scan" />
       <Stack.Screen name="[id]/steps/[stepId]/photo" />
       <Stack.Screen name="[id]/steps/[stepId]/result" />

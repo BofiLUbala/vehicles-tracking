@@ -80,3 +80,10 @@ export interface MissionTrace {
   totalDistanceMeters: number;
   positions: MissionTracePosition[];
 }
+
+/** Trace recalée sur les routes (dérivée ; ne remplace jamais les positions brutes). */
+export interface SnappedTrace {
+  points: { latitude: number; longitude: number }[];
+  inputPoints: number;
+  offRoadPoints: number;
+}

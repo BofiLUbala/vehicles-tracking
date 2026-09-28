@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Navigation2 } from 'lucide-react-native';
+import { ArrowLeft, Navigation2, ChartLine, ChevronRight } from 'lucide-react-native';
 import { MissionsApi } from '../../../../src/api/missions.api';
 import { useTracking } from '../../../../src/context/TrackingContext';
 import { useMissionRealtime } from '../../../../src/hooks/useMissionRealtime';
@@ -115,6 +115,8 @@ export default function MissionDetailScreen() {
 
   const isStarted = mission.status === 'STARTED' || mission.status === 'IN_PROGRESS';
   const isCompleted = mission.status === 'COMPLETED';
+  // Un trajet existe dès que la mission a démarré (en cours ou terminée).
+  const hasTrip = isStarted || mission.status === 'COMPLETED' || mission.status === 'NOT_COMPLETED';
 
   const sortedSteps = mission.steps.sort((a, b) => a.order - b.order);
 
@@ -140,6 +142,22 @@ export default function MissionDetailScreen() {
             <Text style={styles.infoValue}>{mission.steps.length} étape(s)</Text>
           </View>
         </View>
+
+        {hasTrip && (
+          <TouchableOpacity
+            style={[styles.card, styles.tripCard]}
+            onPress={() => router.push(`/(main)/missions/${mission.id}/trip`)}
+            accessibilityRole="button"
+            accessibilityLabel="Revoir le trajet"
+          >
+            <ChartLine size={22} color={AppTheme.tracking} />
+            <View style={styles.tripText}>
+              <Text style={[styles.cardTitle, styles.tripTitle]}>Revoir le trajet</Text>
+              <Text style={styles.tripSub}>Vitesse, arrêts détectés, trace recalée et rejeu</Text>
+            </View>
+            <ChevronRight size={18} color={AppTheme.textMuted} />
+          </TouchableOpacity>
+        )}
 
         <Text style={styles.sectionTitle}>Étapes ordonnées</Text>
 
@@ -172,6 +190,10 @@ export default function MissionDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  tripCard: { flexDirection: 'row', alignItems: 'center' },
+  tripText: { flex: 1, marginLeft: 12 },
+  tripTitle: { marginBottom: 2 },
+  tripSub: { fontSize: 12, color: AppTheme.textSecondary },
   safeArea: {
     flex: 1,
     backgroundColor: AppTheme.background,

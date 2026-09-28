@@ -34,6 +34,23 @@ export class MissionGeoService {
   async snappedTraceForOrganization(organizationId: string, missionId: string) {
     const mission = await this.prisma.mission.findFirst({ where: { id: missionId, organizationId }, select: { id: true } });
     if (!mission) throw new NotFoundException('Mission introuvable');
+    return this.snappedTrace(missionId);
+  }
+
+  /** Même trace recalée, limitée aux missions du chauffeur appelant (écran « Revoir le trajet »). */
+  async snappedTraceForDriver(driverId: string, missionId: string) {
+    const mission = await this.prisma.mission.findFirst({ where: { id: missionId, driverId }, select: { id: true } });
+    if (!mission) throw new NotFoundException('Mission introuvable');
+    return this.snappedTrace(missionId);
+  }
+
+  /** Adresse d'un point (arrêt détecté). À la demande, mise en cache côté TomTomService. */
+  async reverseGeocode(latitude: number, longitude: number) {
+    const result = await this.guard(() => this.tomtom.reverseGeocode({ latitude, longitude }));
+    return { derived: true, source: 'tomtom-reverse-geocode', latitude, longitude, ...result };
+  }
+
+  private async snappedTrace(missionId: string) {
     const positions = await this.prisma.gpsPosition.findMany({
       where: { missionId },
       orderBy: { recordedAt: 'asc' },

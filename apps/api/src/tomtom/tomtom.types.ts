@@ -27,6 +27,13 @@ export interface SnappedTrace {
   offRoadPoints: number;
 }
 
+export interface ReverseGeocodeResult {
+  /** Adresse complète lisible, `null` si TomTom ne connaît rien à cet endroit. */
+  address: string | null;
+  street: string | null;
+  municipality: string | null;
+}
+
 export type TomTomErrorKind =
   | 'NOT_CONFIGURED'
   | 'INVALID_INPUT'

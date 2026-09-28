@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { LatLng, PlannedRoute, SnappedTrace, TimedLatLng, TomTomError } from './tomtom.types';
+import { LatLng, PlannedRoute, ReverseGeocodeResult, SnappedTrace, TimedLatLng, TomTomError } from './tomtom.types';
 
 const BASE_URL = 'https://api.tomtom.com';
 const MAX_ROUTE_WAYPOINTS = 150; // limite documentée de l'API Routing
@@ -93,6 +93,23 @@ export class TomTomService {
     const snapped = parseSnap(json, points.length);
     if (cacheKey) this.cacheSet(cacheKey, snapped);
     return snapped;
+  }
+
+  /**
+   * Adresse lisible d'un point (arrêts détectés sur une trace). Mis en cache par coordonnées
+   * arrondies à ~11 m : plusieurs arrêts au même endroit ne coûtent qu'un appel.
+   */
+  async reverseGeocode(point: LatLng): Promise<ReverseGeocodeResult> {
+    TomTomService.validate([point], 1, 1);
+    const lat = point.latitude.toFixed(4);
+    const lng = point.longitude.toFixed(4);
+    const cacheKey = `rev:${lat},${lng}`;
+    const cached = this.cacheGet<ReverseGeocodeResult>(cacheKey);
+    if (cached) return cached;
+    const json = await this.request('GET', `/search/2/reverseGeocode/${lat},${lng}.json`, { language: 'fr-FR' });
+    const result = parseReverseGeocode(json);
+    this.cacheSet(cacheKey, result);
+    return result;
   }
 
   private async request(method: 'GET' | 'POST', path: string, query: Record<string, string>, body?: unknown): Promise<unknown> {
@@ -211,4 +228,14 @@ export function parseSnap(json: unknown, inputPoints: number): SnappedTrace {
     points.push({ latitude: c[1], longitude: c[0] }); // GeoJSON = [lng, lat]
   }
   return { points, inputPoints, offRoadPoints };
+}
+
+export function parseReverseGeocode(json: unknown): ReverseGeocodeResult {
+  const addresses = (json as { addresses?: { address?: Record<string, string> }[] })?.addresses;
+  if (!Array.isArray(addresses)) throw new TomTomError('MALFORMED', 'Réponse de géocodage inverse invalide');
+  const a = addresses[0]?.address;
+  if (!a) return { address: null, street: null, municipality: null };
+  const street = [a.streetNumber, a.streetName].filter(Boolean).join(' ') || null;
+  const municipality = a.municipalitySubdivision || a.municipality || null;
+  return { address: a.freeformAddress || [street, municipality].filter(Boolean).join(', ') || null, street, municipality };
 }

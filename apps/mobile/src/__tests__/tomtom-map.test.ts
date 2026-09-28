@@ -5,6 +5,7 @@ import {
   decimateTrace,
   describeMapFailure,
   parseMapMessage,
+  replayScript,
   resolveStyleUrl,
   setStyleScript,
   toLngLat,
@@ -100,5 +101,53 @@ describe('tomtom-map', () => {
     expect(describeMapFailure(403)).toMatch(/refusée/);
     expect(describeMapFailure(429)).toMatch(/Limite/);
     expect(describeMapFailure()).toMatch(/indisponible/);
+  });
+
+  it('injects a WebView script that is valid JavaScript', () => {
+    const html = buildMapHtml('https://x/style', { lat: 1, lng: 2, zoom: 10 }, { vehicleModelUrl: 'https://cdn.example/truck.glb' });
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    expect(scripts).toHaveLength(1);
+    // Syntaxe seulement (le code n'est pas exécuté) ; `import()` est remplacé car interdit hors module ici.
+    expect(() => new Function(scripts[0].replace(/import\(/g, 'Promise.resolve('))).not.toThrow();
+    expect(html).toContain('"three":"https://cdn.jsdelivr.net/npm/three@');
+    expect(html).toContain('truck.glb');
+  });
+
+  it('only accepts https vehicle models', () => {
+    const html = buildMapHtml('https://x/style', { lat: 1, lng: 2, zoom: 10 }, { vehicleModelUrl: 'http://evil/x.glb' });
+    expect(html).not.toContain('evil');
+  });
+
+  it('sends heading, speed, time and 3D/replay flags for smooth vehicle rendering', () => {
+    const script = buildUpdateScript({
+      ...baseState,
+      gps: { latitude: 1, longitude: 2, accuracy: 8, heading: 90, speed: 12, timestamp: '2026-09-28T08:00:10.000Z' },
+      trace: [
+        { latitude: 1, longitude: 2, timestamp: '2026-09-28T08:00:00.000Z' },
+        { latitude: 1.1, longitude: 2.1, timestamp: '2026-09-28T08:00:10.000Z' },
+      ],
+      traceSegments: [{ color: '#22C55E', points: [{ latitude: 1, longitude: 2 }, { latitude: 1.1, longitude: 2.1 }] }],
+      pauses: [{ latitude: 1, longitude: 2, label: '5 min' }],
+      view3d: true,
+      replay: true,
+    });
+    const payload = JSON.parse(script.replace(/^window\.__update && window\.__update\(/, '').replace(/\); true;$/, ''));
+    expect(payload.gps).toEqual({ lng: 2, lat: 1, acc: 8, heading: 90, speed: 12, time: Date.parse('2026-09-28T08:00:10.000Z') });
+    expect(payload.traceT).toEqual([0, 10000]);
+    expect(payload.segments).toEqual([{ color: '#22C55E', coords: [[2, 1], [2.1, 1.1]] }]);
+    expect(payload.pauses).toEqual([{ label: '5 min', lng: 2, lat: 1 }]);
+    expect(payload.view3d).toBe(true);
+    expect(payload.replay).toBe(true);
+  });
+
+  it('omits trace times when the trace is not timestamped', () => {
+    const script = buildUpdateScript(baseState);
+    expect(script).toContain('"traceT":[]');
+  });
+
+  it('builds a tiny replay script', () => {
+    expect(replayScript({ latitude: 1, longitude: 2, bearing: NaN, elapsedMs: -5 })).toBe(
+      'window.__replay && window.__replay({"lng":2,"lat":1,"bearing":0,"t":0}); true;',
+    );
   });
 });

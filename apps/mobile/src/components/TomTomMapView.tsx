@@ -5,9 +5,11 @@ import { AppTheme } from '../theme/colors';
 import {
   MapState,
   MobileMapStyle,
+  ReplayState,
   buildMapHtml,
   buildUpdateScript,
   parseMapMessage,
+  replayScript,
   resolveStyleUrl,
   setStyleScript,
   zoomScript,
@@ -15,6 +17,8 @@ import {
 
 export interface TomTomMapHandle {
   zoomBy: (delta: number) => void;
+  /** Place le véhicule à une position de rejeu (appelé à chaque image : aucun re-rendu React). */
+  replayTo: (frame: ReplayState) => void;
 }
 
 interface Props {
@@ -28,6 +32,8 @@ interface Props {
 
 // Clé CLIENT (publique, à restreindre côté portail TomTom). Sans clé : fond OpenFreeMap.
 const TOMTOM_KEY = process.env.EXPO_PUBLIC_TOMTOM_API_KEY;
+// Modèle 3D glTF/GLB facultatif (https, Draco accepté). Absent : camion généré par three.js.
+const VEHICLE_MODEL_URL = process.env.EXPO_PUBLIC_VEHICLE_MODEL_URL;
 const BASE_URL = 'https://tracking-vehicles.local/';
 /** Seul le document initial (baseUrl / about:blank) peut être chargé comme page. */
 export function isOwnDocument(req: { url: string }): boolean {
@@ -48,7 +54,7 @@ export function TomTomMapView({ state, onUserMoved, handleRef, mapStyle = 'drivi
   const html = useMemo(() => {
     const first = state.gps ?? state.stops[0];
     const initial = first ? { lat: first.latitude, lng: first.longitude, zoom: 14 } : DEFAULT_CENTER;
-    return buildMapHtml(resolveStyleUrl(TOMTOM_KEY, mapStyle), initial);
+    return buildMapHtml(resolveStyleUrl(TOMTOM_KEY, mapStyle), initial, { vehicleModelUrl: VEHICLE_MODEL_URL });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -67,7 +73,12 @@ export function TomTomMapView({ state, onUserMoved, handleRef, mapStyle = 'drivi
   }, [state]);
 
   useEffect(() => {
-    if (handleRef) handleRef.current = { zoomBy: (d) => webRef.current?.injectJavaScript(zoomScript(d)) };
+    if (handleRef) {
+      handleRef.current = {
+        zoomBy: (d) => webRef.current?.injectJavaScript(zoomScript(d)),
+        replayTo: (frame) => webRef.current?.injectJavaScript(replayScript(frame)),
+      };
+    }
     return () => {
       if (handleRef) handleRef.current = null;
     };

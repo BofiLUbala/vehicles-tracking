@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,19 +9,22 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ScanLine, CheckCircle2, ClipboardList, MapPin, RefreshCw, ChevronDown, ChevronUp, Flag } from 'lucide-react-native';
+import { ArrowLeft, ScanLine, CheckCircle2, ClipboardList, MapPin, RefreshCw, ChevronDown, ChevronUp, Flag, ChartLine } from 'lucide-react-native';
 import { MissionsApi } from '../../../../src/api/missions.api';
 import { useTracking } from '../../../../src/context/TrackingContext';
+import { loadMissionRawTrace } from '../../../../src/services/mission-trace';
 import { useSync } from '../../../../src/context/SyncContext';
 import { useMissionRealtime } from '../../../../src/hooks/useMissionRealtime';
-import { TrackingService } from '../../../../src/services/tracking.service';
-import { GpsQueueRepository } from '../../../../src/database/gps-queue.repository';
 import { Mission } from '../../../../src/types/mission.types';
 import { MissionMap, MissionStop } from '../../../../src/components/MissionMap';
 import { MissionStepCard } from '../../../../src/components/MissionStepCard';
 import { BigButton } from '../../../../src/components/BigButton';
 import { LoadingView } from '../../../../src/components/LoadingView';
 import { ErrorView } from '../../../../src/components/ErrorView';
+import { TripStatsCard } from '../../../../src/components/TripStatsCard';
+import { SpeedLegend } from '../../../../src/components/SpeedLegend';
+import { useTripAnalysis } from '../../../../src/hooks/useTripAnalysis';
+import { gpsQualityPercent } from '../../../../src/geo/gps-filter';
 import { AppRadius, AppTheme } from '../../../../src/theme/colors';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -42,10 +45,10 @@ export default function MissionProgressScreen() {
   const [showSteps, setShowSteps] = useState(false);
   const [plannedRoute, setPlannedRoute] = useState<{ latitude: number; longitude: number }[]>([]);
   const { height: screenHeight } = useWindowDimensions();
-  const { isTracking, startTracking, stopTracking, currentGps, trace, appendTracePoint, setTraceFromServer } = useTracking();
+  const { isTracking, startTracking, stopTracking, currentGps, trace, gpsStats, setTraceFromServer } = useTracking();
+  const trip = useTripAnalysis(trace);
   const { isConnected, isSyncing, counts } = useSync();
   const router = useRouter();
-  const listenerRef = useRef<(() => void) | null>(null);
 
   // Itinéraire planifié : un seul appel par mission (jamais par point GPS), en arrière-plan.
   useEffect(() => {
@@ -65,24 +68,8 @@ export default function MissionProgressScreen() {
       if (data.status === 'STARTED' || data.status === 'IN_PROGRESS') {
         await startTracking(data.vehicleId, data.id);
 
-        // Restaure le trajet : positions serveur (autre appareil / réinstallation) + file locale
-        // non encore synchronisée, dédupliquées puis ordonnées chronologiquement.
-        const serverTrace = await MissionsApi.getMissionTrace(data.id).catch(() => null);
-        const merged: { latitude: number; longitude: number; recordedAt: string }[] =
-          serverTrace?.positions.map((p) => ({
-            latitude: p.latitude,
-            longitude: p.longitude,
-            recordedAt: p.recordedAt,
-          })) ?? [];
-        const seen = new Set(merged.map((p) => `${p.latitude}|${p.longitude}|${p.recordedAt}`));
-        for (const pos of GpsQueueRepository.getMissionPositions(data.id)) {
-          const key = `${pos.latitude}|${pos.longitude}|${pos.recorded_at}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          merged.push({ latitude: pos.latitude, longitude: pos.longitude, recordedAt: pos.recorded_at });
-        }
-        merged.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
-        setTraceFromServer(merged);
+        // Restaure le trajet : positions serveur + file locale non synchronisée (nettoyées ensuite).
+        setTraceFromServer(await loadMissionRawTrace(data.id));
       }
     } catch {
       setError('Impossible d’actualiser la progression.');
@@ -111,22 +98,6 @@ export default function MissionProgressScreen() {
   useEffect(() => {
     loadMission();
   }, [loadMission]);
-
-  useEffect(() => {
-    if (isTracking) {
-      listenerRef.current = TrackingService.addPositionListener((position) => {
-        appendTracePoint({
-          latitude: position.latitude,
-          longitude: position.longitude,
-          timestamp: position.timestamp,
-        });
-      });
-    }
-    return () => {
-      listenerRef.current?.();
-      listenerRef.current = null;
-    };
-  }, [isTracking, appendTracePoint]);
 
   if (isLoading) {
     return (
@@ -201,6 +172,9 @@ export default function MissionProgressScreen() {
           trace={trace}
           stops={mapStops}
           plannedRoute={plannedRoute}
+          traceSegments={trip.mapSegments}
+          pauses={trip.mapPauses}
+          overlay={trace.length > 1 ? <SpeedLegend /> : undefined}
           currentStepIndex={currentStepIndex >= 0 ? currentStepIndex : sortedSteps.length}
           onSettingsPress={() => router.push('/(main)/permissions/gps')}
         />
@@ -230,10 +204,12 @@ export default function MissionProgressScreen() {
             <View style={styles.stepHighlight}><CheckCircle2 size={25} color={AppTheme.success} /><Text style={[styles.stepName, { marginLeft: 12 }]}>Toutes les étapes sont validées</Text></View>
           )}
 
+          {trace.length > 1 && <TripStatsCard compact stats={trip.stats} stopsCount={trip.stops.length} />}
+
           <View style={styles.infoRow}>
             <MapPin size={20} color={isTracking ? AppTheme.success : AppTheme.textMuted} />
             <View style={styles.infoText}><Text style={styles.infoTitle}>GPS {isTracking ? 'actif' : 'inactif'}</Text><Text style={styles.infoSubtitle}>{isTracking ? 'Position transmise' : 'Localisation indisponible'}</Text></View>
-            {currentGps?.accuracy != null && <Text style={styles.infoRight}>± {Math.round(currentGps.accuracy)} m</Text>}
+            {currentGps?.accuracy != null && <Text style={styles.infoRight}>± {Math.round(currentGps.accuracy)} m · {gpsQualityPercent(gpsStats)} % exploitables</Text>}
           </View>
           <View style={styles.infoRow}>
             <RefreshCw size={20} color={isConnected ? AppTheme.tracking : AppTheme.textMuted} />
@@ -247,6 +223,10 @@ export default function MissionProgressScreen() {
             <BigButton label="Terminer la mission" icon={<Flag size={20} color="#FFFFFF" />} isLoading={isCompleting} onPressed={completeMission} style={styles.finishAction} />
           )}
           {completionError && <Text style={styles.completionError}>{completionError}</Text>}
+          <TouchableOpacity onPress={() => router.push(`/(main)/missions/${mission.id}/trip`)} style={styles.stepsToggle} accessibilityRole="button" accessibilityLabel="Analyser le trajet">
+            <ChartLine size={18} color={AppTheme.tracking} />
+            <Text style={[styles.stepsToggleText, { marginLeft: 6 }]}>Analyser le trajet (vitesse, arrêts, rejeu)</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowSteps((value) => !value)} style={styles.stepsToggle} accessibilityRole="button" accessibilityLabel={showSteps ? 'Masquer les étapes' : 'Voir toutes les étapes'}>
             <Text style={styles.stepsToggleText}>{showSteps ? 'Masquer les étapes' : 'Voir toutes les étapes'}</Text>
             {showSteps ? <ChevronUp size={18} color={AppTheme.tracking} /> : <ChevronDown size={18} color={AppTheme.tracking} />}

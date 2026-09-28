@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { Mission, MissionTrace } from '../types/mission.types';
+import { Mission, MissionTrace, SnappedTrace } from '../types/mission.types';
 
 export const MissionsApi = {
   async getTodayMissions(): Promise<Mission[]> {
@@ -34,6 +34,19 @@ export const MissionsApi = {
       return response.data?.points ?? [];
     } catch {
       return [];
+    }
+  },
+
+  /**
+   * Trace recalée sur les routes (TomTom Snap to Roads, dérivée côté backend). Facultative :
+   * `null` si indisponible — l'écran garde alors la trace nettoyée localement.
+   */
+  async getSnappedTrace(missionId: string): Promise<SnappedTrace | null> {
+    try {
+      const response = await apiClient.get<SnappedTrace>(`/mobile/missions/${missionId}/trace/snapped`);
+      return response.data?.points ? response.data : null;
+    } catch {
+      return null;
     }
   },
 
