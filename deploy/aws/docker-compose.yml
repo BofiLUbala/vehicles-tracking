@@ -49,6 +49,10 @@ services:
       retries: 5
 
   api:
+    # Image publiée par GitHub Actions (.github/workflows/deploy-api.yml) et mise à jour par
+    # auto-deploy.sh. `build` reste disponible pour un déploiement manuel de secours :
+    # `docker compose ... up -d --build api`.
+    image: ghcr.io/bofilubala/vehicles-tracking-api:latest
     build:
       context: ../../apps/api
       dockerfile: Dockerfile

@@ -34,4 +34,6 @@ EXPOSE 3001
 # inclus (src/ ET prisma/, ce dernier contenant prisma/seed.ts) : la sortie est donc
 # dist/src/main.js (et non dist/main.js), pas dist/main.js. Vérifié par exécution réelle du
 # conteneur (bug préexistant, jamais testé avant cette phase).
-CMD ["node", "dist/src/main"]
+# Les migrations Prisma s'appliquent à chaque démarrage (no-op si la base est à jour) : une
+# nouvelle image déployée automatiquement n'exige aucune commande manuelle.
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/src/main"]

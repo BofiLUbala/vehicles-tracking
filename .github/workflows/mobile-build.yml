@@ -1,0 +1,39 @@
+name: Mobile build (EAS)
+
+# Build Android dans le cloud Expo, sans poste de développeur.
+#  - `preview-online` : APK installable directement, branché sur l'API de production ;
+#  - `production`      : AAB pour le Play Store.
+# Prérequis unique : secret de dépôt EXPO_TOKEN (expo.dev -> Account settings -> Access tokens).
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Profil EAS
+        type: choice
+        options: [preview-online, production]
+        default: preview-online
+  push:
+    tags: ['mobile-v*'] # un tag mobile-v1.2.0 lance un build production
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci
+      - run: npm run typecheck && npm test
+      - name: 'Build EAS (sans attendre la fin, suivi sur expo.dev)'
+        run: eas build --platform android --non-interactive --no-wait --profile "${{ inputs.profile || 'production' }}"
