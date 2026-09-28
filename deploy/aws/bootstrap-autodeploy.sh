@@ -7,7 +7,8 @@ cd "$(dirname "$0")"
 chmod +x auto-deploy.sh
 
 LINE="*/2 * * * * $(pwd)/auto-deploy.sh >> $HOME/auto-deploy.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'auto-deploy.sh' ; echo "$LINE" ) | crontab -
+# Crontab vide au premier lancement : `crontab -l` et `grep -v` échouent alors (pipefail).
+{ { crontab -l 2>/dev/null || true; } | grep -v 'auto-deploy.sh' || true; echo "$LINE"; } | crontab -
 echo "cron installé :"
 crontab -l | grep auto-deploy.sh
 
