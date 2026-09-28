@@ -1,7 +1,7 @@
-name: Deploy API
+name: Deploy server images
 
-# Livraison continue de l'API, sans poste de développeur :
-#   push sur main -> CI (tests) verte -> image Docker publiée sur GHCR (tags `latest` et SHA)
+# Livraison continue de l'API et de l'admin web, sans poste de développeur :
+#   push sur main -> CI (tests) verte -> images Docker publiées sur GHCR (tags `latest` et SHA)
 #   -> le serveur EC2 détecte la nouvelle image (deploy/aws/auto-deploy.sh, cron toutes les 2 min),
 #      la démarre (migrations Prisma incluses) et revient automatiquement à l'ancienne si elle
 #      n'est pas saine.
@@ -20,7 +20,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: deploy-api
+  group: deploy-server-images
   cancel-in-progress: false
 
 jobs:
@@ -28,6 +28,14 @@ jobs:
     # Ne publie que si la CI du même commit est verte (ou lancement manuel).
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            context: apps/api
+          - app: admin
+            context: apps/admin-web
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,7 +43,7 @@ jobs:
 
       - name: Nom d'image en minuscules (exigé par GHCR)
         id: img
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-api" >> "$GITHUB_OUTPUT"
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-${{ matrix.app }}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -47,16 +55,21 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          context: apps/api
+          context: ${{ matrix.context }}
           push: true
+          # Admin : variables NEXT_PUBLIC_* figées au build. L'API est appelée en relatif (même
+          # origine via Caddy / Worker Cloudflare) ; clé TomTom client = variable de dépôt
+          # (sans elle : fond OpenFreeMap).
+          build-args: |
+            NEXT_PUBLIC_TOMTOM_API_KEY=${{ vars.NEXT_PUBLIC_TOMTOM_API_KEY }}
           tags: |
             ${{ steps.img.outputs.name }}:latest
             ${{ steps.img.outputs.name }}:${{ github.event.workflow_run.head_sha || github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha || github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
 
       - name: Résumé
         run: |

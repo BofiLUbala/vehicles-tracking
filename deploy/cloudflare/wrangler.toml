@@ -1,0 +1,10 @@
+# Worker public de l'admin : https://track.<sous-domaine-du-compte>.workers.dev
+# Déployé par .github/workflows/deploy-edge.yml (secrets CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID).
+name = "track"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[vars]
+# Caddy sur l'EC2 (voir deploy/aws/Caddyfile, bloc ADMIN_DOMAIN).
+ORIGIN = "https://admin.46-137-0-222.sslip.io"

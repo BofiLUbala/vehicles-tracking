@@ -82,13 +82,33 @@ services:
       retries: 5
       start_period: 30s
 
-  # HTTPS automatique (Let's Encrypt) pour API_DOMAIN et FILES_DOMAIN.
+  # Admin web (Next.js standalone). Image publiée par GitHub Actions et mise à jour par
+  # auto-deploy.sh comme l'api. Exposé publiquement via Caddy (ADMIN_DOMAIN) et le Worker
+  # Cloudflare `track` (deploy/cloudflare). Ses routes /api/auth/* appellent l'api en interne.
+  admin:
+    image: ghcr.io/bofilubala/vehicles-tracking-admin:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_BASE_URL: http://api:3001/api/v1
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # HTTPS automatique (Let's Encrypt) pour API_DOMAIN, FILES_DOMAIN et ADMIN_DOMAIN.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     environment:
       API_DOMAIN: ${API_DOMAIN}
       FILES_DOMAIN: ${FILES_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.46-137-0-222.sslip.io}
     ports:
       - "80:80"
       - "443:443"
