@@ -2,16 +2,19 @@ name: Mobile deploy (EAS)
 
 # Livraison continue de l'application mobile, sans poste de développeur.
 #
-# Automatique, à chaque push sur main touchant apps/mobile (tests verts) :
-#   - seul le JavaScript a changé  -> mise à jour OTA (EAS Update, canal `preview`) : les
-#     téléphones la reçoivent au prochain lancement, sans réinstaller ;
-#   - le code natif a changé (empreinte « fingerprint » différente) -> nouvel APK
-#     `preview-online` construit dans le cloud Expo, puis les mises à jour suivantes s'y appliquent.
+# Automatique, à chaque push sur main touchant apps/mobile (tests verts), canal PRODUCTION :
+#   - seul le JavaScript a changé  -> mise à jour OTA (EAS Update, branche `production`) : les
+#     utilisateurs Play Store la reçoivent au prochain lancement, sans nouvelle version store ;
+#   - le code natif a changé (empreinte « fingerprint » différente) -> nouvel AAB `production`
+#     (versionCode incrémenté) construit dans le cloud Expo et, si la variable de dépôt
+#     PLAY_AUTO_SUBMIT vaut `true`, envoyé au Play Console (piste `internal`, voir eas.json).
 #
-# Manuel (Run workflow) : build `production` (AAB Play Store).
+# Retour arrière d'une mise à jour OTA : `eas update:rollback` (ou republier l'ancienne).
+# Manuel (Run workflow) : build à la demande.
 #
-# Prérequis : secret de dépôt EXPO_TOKEN ; variables EXPO_PUBLIC_* définies dans les
-# environnements EAS `preview` / `production` (expo.dev -> projet -> Environment variables).
+# Prérequis : secret EXPO_TOKEN ; variables EXPO_PUBLIC_* dans l'environnement EAS `production` ;
+# pour l'envoi automatique : clé de compte de service Google Play déposée sur expo.dev
+# (Credentials -> Android -> Google Service Account Key) puis variable PLAY_AUTO_SUBMIT=true.
 
 on:
   push:
@@ -22,7 +25,7 @@ on:
       profile:
         description: Build manuel
         type: choice
-        options: [production, preview-online]
+        options: [production]
         default: production
 
 permissions:
@@ -66,14 +69,15 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
         working-directory: apps/mobile
-      - name: OTA update, ou nouvel APK si le natif a changé
+      - name: OTA update, ou nouvel AAB Play Store si le natif a changé
         uses: expo/expo-github-action/continuous-deploy-fingerprint@main
         with:
           working-directory: apps/mobile
-          profile: preview-online
-          branch: preview
-          environment: preview
+          profile: production
+          branch: production
+          environment: production
           platform: android
+          auto-submit-builds: ${{ vars.PLAY_AUTO_SUBMIT == 'true' }}
 
   manual-build:
     if: github.event_name == 'workflow_dispatch'
