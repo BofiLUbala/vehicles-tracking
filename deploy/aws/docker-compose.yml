@@ -1,8 +1,8 @@
-# Stack de production AWS (EC2) : api NestJS + Postgres/PostGIS + Redis + MinIO derrière Caddy.
-# L'admin-web est hébergé séparément (Cloudflare) : il n'est pas servi ici.
+# Stack de production AWS (EC2) : api NestJS + admin web + Postgres/PostGIS + Redis + MinIO
+# derrière Caddy. Adresse publique de l'admin : Worker Cloudflare `track` (deploy/cloudflare).
 #
-# Lancement (depuis la racine du repo sur le serveur) :
-#   docker compose -f deploy/aws/docker-compose.yml --env-file deploy/aws/.env up -d --build
+# Déployé AUTOMATIQUEMENT : auto-deploy.sh (cron) applique ce fichier dès qu'il change sur main,
+# avec validation et retour arrière. Ne pas le modifier directement sur le serveur.
 #
 # Seul Caddy publie des ports (80/443) : Postgres, Redis, MinIO et l'api ne sont joignables que
 # via le réseau Docker interne.
