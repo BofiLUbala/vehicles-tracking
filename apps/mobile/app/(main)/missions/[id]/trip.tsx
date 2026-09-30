@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Pause, Play, RotateCcw, Route, Gauge, X } from 'lucide-react-native';
 import { MissionsApi } from '../../../../src/api/missions.api';
@@ -139,10 +140,10 @@ export default function MissionTripScreen() {
   }, [trip.stops, trace]);
 
   if (isLoading) {
-    return <SafeAreaView style={styles.safeArea}><LoadingView message="Chargement du trajet…" /></SafeAreaView>;
+    return <SafeAreaView edges={['top']} style={styles.safeArea}><LoadingView message="Chargement du trajet…" /></SafeAreaView>;
   }
   if (error || !mission) {
-    return <SafeAreaView style={styles.safeArea}><ErrorView message={error || 'Mission introuvable.'} onRetry={load} /></SafeAreaView>;
+    return <SafeAreaView edges={['top']} style={styles.safeArea}><ErrorView message={error || 'Mission introuvable.'} onRetry={load} /></SafeAreaView>;
   }
 
   const sortedSteps = [...mission.steps].sort((a, b) => a.order - b.order);
@@ -160,7 +161,7 @@ export default function MissionTripScreen() {
   const clock = trace.length > 0 ? new Date(Date.parse(trace[0].timestamp) + replayT * 1000) : null;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity accessibilityLabel="Retour" onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={21} color="#FFFFFF" />

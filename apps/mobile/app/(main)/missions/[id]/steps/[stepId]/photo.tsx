@@ -3,10 +3,10 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Camera, Check, RotateCcw, X } from 'lucide-react-native';
@@ -37,7 +37,7 @@ export default function PhotoCaptureScreen() {
 
   if (!permission?.granted) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
         <View style={styles.permissionCard}>
           <View style={styles.permissionIcon}>
             <Camera size={32} color={AppTheme.primary} />
@@ -151,7 +151,7 @@ export default function PhotoCaptureScreen() {
         <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
       )}
 
-      <SafeAreaView style={styles.overlay}>
+      <SafeAreaView edges={['top']} style={styles.overlay}>
         <View style={styles.topBar}>
           <TouchableOpacity
             onPress={() => (photoUri ? setPhotoUri(null) : router.back())}

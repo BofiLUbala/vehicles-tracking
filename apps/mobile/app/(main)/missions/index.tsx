@@ -114,8 +114,8 @@ export default function MissionsListScreen() {
             {currentStep && <View style={styles.currentStop}><View style={styles.stopNumber}><Text style={styles.stopNumberText}>{currentStep.order}</Text></View><View style={styles.stopText}><Text style={styles.stopCaption}>ÉTAPE ACTUELLE</Text><Text style={styles.stopName} numberOfLines={1}>{currentStep.location.name}</Text><Text style={styles.stopAddress} numberOfLines={1}>{currentStep.location.address || currentStep.actionType}</Text></View><ChevronRight size={18} color={AppTheme.warning} /></View>}
             {!currentStep && <View style={styles.currentStop}><CheckCircle2 size={24} color={AppTheme.success} /><Text style={[styles.stopName, { marginLeft: 10 }]}>Toutes les étapes sont validées</Text></View>}
             <View style={styles.statusRow}><MapPin size={20} color={isTracking ? AppTheme.success : AppTheme.textMuted} /><View style={styles.statusCopy}><Text style={styles.statusTitle}>GPS {isTracking ? 'actif' : 'inactif'}</Text><Text style={styles.statusDetail}>{isTracking ? 'Position transmise' : 'Le suivi démarre avec la mission'}</Text></View>{currentGps?.accuracy != null && <Text style={styles.statusValue}>± {Math.round(currentGps.accuracy)} m</Text>}</View>
-            <View style={styles.statusRow}><RefreshCw size={20} color={isConnected ? AppTheme.tracking : AppTheme.textMuted} /><View style={styles.statusCopy}><Text style={styles.statusTitle}>Synchronisation</Text><Text style={styles.statusDetail}>{isConnected ? 'Données connectées au web-admin' : 'Envoi dès le retour du réseau'}</Text></View><Text style={styles.statusValue}>{isConnected ? counts.total > 0 ? `${counts.total} attente` : 'À jour' : 'Hors ligne'}</Text></View>
-            <TouchableOpacity onPress={openMission} style={styles.mainAction} accessibilityRole="button"><Navigation2 size={19} color="#FFFFFF" /><Text style={styles.mainActionText}>{isActive ? 'Continuer la mission' : 'Démarrer la mission'}</Text></TouchableOpacity>
+            <View style={styles.statusRow}><RefreshCw size={20} color={isConnected ? AppTheme.tracking : AppTheme.textMuted} /><View style={styles.statusCopy}><Text style={styles.statusTitle}>Synchronisation</Text><Text style={styles.statusDetail}>{isConnected ? 'Données connectées au web-admin' : 'Envoi dès le retour du réseau'}</Text></View><Text style={styles.statusValue}>{isConnected ? counts.total > 0 ? `${counts.total} à envoyer` : 'À jour' : 'Hors ligne'}</Text></View>
+            <TouchableOpacity onPress={openMission} style={styles.mainAction} accessibilityRole="button"><Navigation2 size={19} color="#FFFFFF" /><Text style={styles.mainActionText}>{isActive ? 'Continuer la mission' : 'Voir la mission'}</Text></TouchableOpacity>
           </View>
           {missions.filter((mission) => mission.id !== primaryMission.id && mission.status !== 'COMPLETED').length > 0 && <View style={styles.moreMissions}><Text style={styles.moreTitle}>Autres missions</Text>{missions.filter((mission) => mission.id !== primaryMission.id && mission.status !== 'COMPLETED').map((mission) => <MissionCard key={mission.id} mission={mission} />)}</View>}
         </ScrollView>
@@ -169,8 +169,8 @@ const styles = StyleSheet.create({
   statusTitle: { color: AppTheme.navy, fontSize: 13, fontWeight: '800' },
   statusDetail: { color: AppTheme.textSecondary, fontSize: 11, marginTop: 1 },
   statusValue: { color: AppTheme.textSecondary, fontSize: 11, fontWeight: '700' },
-  mainAction: { marginTop: 14, minHeight: 48, borderRadius: 9, backgroundColor: AppTheme.tracking, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  mainActionText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', marginLeft: 8 },
+  mainAction: { marginTop: 14, minHeight: 48, borderRadius: 9, backgroundColor: AppTheme.primaryDark, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  mainActionText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', marginLeft: 8 },
   moreMissions: { padding: 17 },
   moreTitle: { color: AppTheme.navy, fontSize: 15, fontWeight: '800', marginBottom: 10 },
   header: {

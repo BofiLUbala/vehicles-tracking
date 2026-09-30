@@ -15,7 +15,7 @@ export const ConnectivityPill: React.FC = () => {
   const getPillData = () => {
     if (!isConnected) {
       return {
-        text: `Hors ligne (${counts.total} en attente)`,
+        text: `Hors ligne (${counts.total} à envoyer)`,
         bg: AppTheme.dangerLight,
         color: AppTheme.danger,
       };
@@ -24,13 +24,13 @@ export const ConnectivityPill: React.FC = () => {
       return {
         text: 'Synchronisation en cours…',
         bg: AppTheme.infoLight,
-        color: AppTheme.info,
+        color: AppTheme.infoText,
       };
     }
     return {
       text: `${counts.total} élément(s) à synchroniser`,
       bg: AppTheme.warningLight,
-      color: AppTheme.warning,
+      color: AppTheme.warningText,
     };
   };
 

@@ -3,11 +3,11 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ScanLine, CheckCircle2, ClipboardList, MapPin, RefreshCw, ChevronDown, ChevronUp, Flag, ChartLine } from 'lucide-react-native';
 import { MissionsApi } from '../../../../src/api/missions.api';
@@ -101,7 +101,7 @@ export default function MissionProgressScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
         <LoadingView message="Chargement de la mission…" />
       </SafeAreaView>
     );
@@ -109,7 +109,7 @@ export default function MissionProgressScreen() {
 
   if (error || !mission) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ErrorView message={error || 'Mission introuvable.'} onRetry={loadMission} />
       </SafeAreaView>
     );
@@ -120,7 +120,7 @@ export default function MissionProgressScreen() {
   const isAllCompleted = currentStepIndex === -1;
   const currentStep = isAllCompleted ? null : sortedSteps[currentStepIndex];
   const completedCount = sortedSteps.filter((step) => step.status === 'VALIDATED').length;
-  const syncLabel = !isConnected ? 'Hors ligne' : isSyncing ? 'Synchronisation…' : counts.total > 0 ? `${counts.total} en attente` : 'À jour';
+  const syncLabel = !isConnected ? 'Hors ligne' : isSyncing ? 'Synchronisation…' : counts.total > 0 ? `${counts.total} à envoyer` : 'À jour';
   const missionActive = mission.status === 'STARTED' || mission.status === 'IN_PROGRESS';
 
   const mapStops: MissionStop[] = sortedSteps.map((step) => ({
@@ -149,7 +149,7 @@ export default function MissionProgressScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity
           accessibilityLabel="Retour aux missions"
@@ -214,7 +214,7 @@ export default function MissionProgressScreen() {
           <View style={styles.infoRow}>
             <RefreshCw size={20} color={isConnected ? AppTheme.tracking : AppTheme.textMuted} />
             <View style={styles.infoText}><Text style={styles.infoTitle}>Synchronisation</Text><Text style={styles.infoSubtitle}>{isConnected ? 'Données de la mission connectées' : 'Envoi dès le retour du réseau'}</Text></View>
-            <Text style={[styles.syncBadge, !isConnected && styles.syncOffline]}>{syncLabel}</Text>
+            <Text style={[styles.syncBadge, isConnected && counts.total > 0 && styles.syncPending, !isConnected && styles.syncOffline]}>{syncLabel}</Text>
           </View>
 
           {currentStep ? (
@@ -223,9 +223,9 @@ export default function MissionProgressScreen() {
             <BigButton label="Terminer la mission" icon={<Flag size={20} color="#FFFFFF" />} isLoading={isCompleting} onPressed={completeMission} style={styles.finishAction} />
           )}
           {completionError && <Text style={styles.completionError}>{completionError}</Text>}
-          <TouchableOpacity onPress={() => router.push(`/(main)/missions/${mission.id}/trip`)} style={styles.stepsToggle} accessibilityRole="button" accessibilityLabel="Analyser le trajet">
+          <TouchableOpacity onPress={() => router.push(`/(main)/missions/${mission.id}/trip`)} style={styles.stepsToggle} accessibilityRole="button" accessibilityLabel="Revoir mon trajet">
             <ChartLine size={18} color={AppTheme.tracking} />
-            <Text style={[styles.stepsToggleText, { marginLeft: 6 }]}>Analyser le trajet (vitesse, arrêts, rejeu)</Text>
+            <Text style={[styles.stepsToggleText, { marginLeft: 6 }]}>Revoir mon trajet</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowSteps((value) => !value)} style={styles.stepsToggle} accessibilityRole="button" accessibilityLabel={showSteps ? 'Masquer les étapes' : 'Voir toutes les étapes'}>
             <Text style={styles.stepsToggleText}>{showSteps ? 'Masquer les étapes' : 'Voir toutes les étapes'}</Text>
@@ -303,6 +303,8 @@ const styles = StyleSheet.create({
   infoRight: { color: AppTheme.textSecondary, fontSize: 11, fontWeight: '700' },
   syncBadge: { color: '#087A4A', backgroundColor: '#DBF6E8', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 12, fontSize: 11, fontWeight: '800', overflow: 'hidden' },
   syncOffline: { color: AppTheme.textSecondary, backgroundColor: AppTheme.subtle },
+  // Données pas encore envoyées : orange, jamais le vert « À jour » (le chauffeur croirait tout transmis).
+  syncPending: { color: AppTheme.warningText, backgroundColor: AppTheme.warningLight },
   primaryAction: { marginTop: 14, backgroundColor: AppTheme.tracking },
   finishAction: { marginTop: 14, backgroundColor: AppTheme.danger },
   completionError: { color: AppTheme.danger, marginTop: 10, fontSize: 12 },

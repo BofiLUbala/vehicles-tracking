@@ -13,12 +13,12 @@ interface SyncStatusPillProps {
 
 function stateConfig(s: SyncState, pending: number) {
   if (s === 'syncing')
-    return { icon: RefreshCw, bg: AppTheme.infoLight, color: AppTheme.info, label: 'Synchronisation…' };
+    return { icon: RefreshCw, bg: AppTheme.infoLight, color: AppTheme.infoText, label: 'Synchronisation…' };
   if (s === 'offline')
     return { icon: WifiOff, bg: AppTheme.dangerLight, color: AppTheme.danger, label: `Hors ligne${pending ? ` (${pending})` : ''}` };
   if (pending > 0)
-    return { icon: Clock, bg: AppTheme.warningLight, color: AppTheme.warning, label: `${pending} en attente` };
-  return { icon: CheckCircle2, bg: AppTheme.successLight, color: AppTheme.success, label: 'Synchronisé' };
+    return { icon: Clock, bg: AppTheme.warningLight, color: AppTheme.warningText, label: `${pending} à envoyer` };
+  return { icon: CheckCircle2, bg: AppTheme.successLight, color: AppTheme.successText, label: 'Synchronisé' };
 }
 
 export const SyncStatusPill: React.FC<SyncStatusPillProps> = ({ state, pendingCount = 0, lastSyncAt }) => {

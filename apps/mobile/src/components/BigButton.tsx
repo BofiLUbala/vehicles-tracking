@@ -98,7 +98,8 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   text: {
-    fontSize: 17,
+    // 19 px gras = « grand texte » : blanc sur les couleurs de marque reste lisible au soleil (≥ 3:1).
+    fontSize: 19,
     fontWeight: '700',
     letterSpacing: 0.2,
   },

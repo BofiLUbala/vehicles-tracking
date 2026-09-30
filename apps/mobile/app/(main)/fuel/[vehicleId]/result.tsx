@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { AlertTriangle, CheckCircle2, CloudOff, XCircle } from 'lucide-react-native';
 import { BigButton } from '../../../../src/components/BigButton';
@@ -60,7 +61,7 @@ export default function FuelResultScreen() {
     : XCircle;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.resultCard}>
           <View style={[styles.iconWrapper, { backgroundColor: iconBg }]}>

@@ -44,7 +44,7 @@ const ACTION_LABELS: Record<string, string> = {
 
 function GpsIndicator({ isTracking, accuracy }: { isTracking: boolean; accuracy?: number | null }) {
   const label = isTracking ? 'GPS actif' : 'GPS inactif';
-  const color = isTracking ? AppTheme.success : AppTheme.textMuted;
+  const color = isTracking ? AppTheme.successText : AppTheme.textMuted;
   const bg = isTracking ? AppTheme.successLight : AppTheme.subtle;
   return (
     <View style={[styles.indicator, { backgroundColor: bg }]}>
@@ -78,17 +78,18 @@ function SyncIndicator({ isSyncing, pending }: { isSyncing: boolean; pending: nu
 
   if (isSyncing) {
     label = 'Synchro…';
-    color = AppTheme.info;
+    color = AppTheme.infoText;
     bg = AppTheme.infoLight;
     Icon = RefreshCw;
   } else if (pending > 0) {
-    label = `${pending} en attente`;
-    color = AppTheme.warning;
+    // « en attente » se lisait « missions en attente » : ce sont des données pas encore envoyées.
+    label = `${pending} à envoyer`;
+    color = AppTheme.warningText;
     bg = AppTheme.warningLight;
     Icon = Clock;
   } else {
     label = 'À jour';
-    color = AppTheme.success;
+    color = AppTheme.successText;
     bg = AppTheme.successLight;
     Icon = CheckCircle2;
   }
@@ -249,7 +250,6 @@ function PrimaryMissionCard({ mission }: { mission: Mission }) {
   const router = useRouter();
   const { isTracking } = useTracking();
   const isActive = mission.status === 'STARTED' || mission.status === 'IN_PROGRESS';
-  const isAssigned = mission.status === 'ASSIGNED' || mission.status === 'PLANNED';
 
   const completed = mission.steps.filter((s) => s.status === 'VALIDATED').length;
   const total = mission.steps.length;
@@ -259,11 +259,9 @@ function PrimaryMissionCard({ mission }: { mission: Mission }) {
     .sort((a, b) => a.order - b.order)
     .find((s) => s.status !== 'VALIDATED');
 
-  const actionLabel = isActive
-    ? 'Continuer la mission'
-    : isAssigned
-    ? 'Démarrer la mission'
-    : 'Voir la mission';
+  // Ce bouton ouvre le détail ; seul le bouton du détail démarre vraiment la mission (et le GPS).
+  // « Démarrer » ici faisait croire au chauffeur que la mission était lancée alors qu'elle ne l'était pas.
+  const actionLabel = isActive ? 'Continuer la mission' : 'Voir la mission';
 
   const handlePress = () => {
     if (isActive) {
@@ -635,7 +633,7 @@ const styles = StyleSheet.create({
   gpsWarningText: {
     fontSize: 12,
     fontWeight: '600',
-    color: AppTheme.warning,
+    color: AppTheme.warningText,
     flex: 1,
   },
   // Empty state

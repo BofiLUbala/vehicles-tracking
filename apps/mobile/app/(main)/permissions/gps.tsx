@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MapPin, Navigation, Fuel } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { TrackingService } from '../../../src/services/tracking.service';
@@ -33,7 +34,7 @@ export default function GpsPermissionScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.iconContainer}>
           <MapPin size={34} color={AppTheme.primary} strokeWidth={2} />

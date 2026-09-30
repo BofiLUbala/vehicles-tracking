@@ -25,7 +25,7 @@ export default function PendingSyncScreen() {
     ? { icon: CheckCircle2, color: AppTheme.success, bg: AppTheme.successLight, title: 'Toutes les données sont synchronisées' }
     : hasFailed
     ? { icon: AlertTriangle, color: AppTheme.danger, bg: AppTheme.dangerLight, title: `${counts.total} élément(s) en attente d'envoi` }
-    : { icon: CloudOff, color: AppTheme.warning, bg: AppTheme.warningLight, title: `${counts.total} élément(s) en attente d'envoi` };
+    : { icon: CloudOff, color: AppTheme.warningText, bg: AppTheme.warningLight, title: `${counts.total} élément(s) en attente d'envoi` };
 
   const BannerIcon = bannerConfig.icon;
 

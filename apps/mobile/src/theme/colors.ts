@@ -26,16 +26,23 @@ export const AppTheme = {
 
   text: '#101828',
   textSecondary: '#667085',
-  textMuted: '#98A2B3',
+  // Assombri de #98A2B3 (2,6:1) à #6D7788 (4,5:1 sur blanc) : lisible en extérieur, même teinte.
+  textMuted: '#6D7788',
 
   // Sémantiques
   success: '#18A957',
+  /** Vert pour du TEXTE (4,5:1 sur blanc) ; `success` reste pour les pastilles, icônes pleines et fonds. */
+  successText: '#188757',
   successLight: 'rgba(24, 169, 87, 0.10)',
   warning: '#F59E0B',
+  /** Orange pour du TEXTE (5,0:1 sur blanc) ; `warning` reste pour les pastilles et fonds. */
+  warningText: '#B45309',
   warningLight: 'rgba(245, 158, 11, 0.12)',
   danger: '#E53E3E',
   dangerLight: 'rgba(229, 62, 62, 0.10)',
   info: '#1479FF',
+  /** Bleu pour du TEXTE (4,5:1 sur blanc). */
+  infoText: '#146FF5',
   infoLight: 'rgba(20, 121, 255, 0.10)',
   suspicious: '#7C2D12',
   suspiciousLight: 'rgba(124, 58, 237, 0.12)',

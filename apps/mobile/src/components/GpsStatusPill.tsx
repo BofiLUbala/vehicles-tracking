@@ -22,8 +22,8 @@ export const GpsStatusPill: React.FC<GpsStatusPillProps> = ({ isTracking, traceC
         live ? styles.live : styles.idle,
       ]}
     >
-      <Satellite size={13} color={live ? AppTheme.success : AppTheme.textMuted} />
-      <Text style={[styles.text, { color: live ? AppTheme.success : AppTheme.textMuted }]}>
+      <Satellite size={13} color={live ? AppTheme.successText : AppTheme.textMuted} />
+      <Text style={[styles.text, { color: live ? AppTheme.successText : AppTheme.textMuted }]}>
         {live ? 'GPS actif' : 'GPS inactif'}
       </Text>
       {live && (

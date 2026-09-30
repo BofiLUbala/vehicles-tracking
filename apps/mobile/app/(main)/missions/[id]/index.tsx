@@ -3,10 +3,10 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Navigation2, ChartLine, ChevronRight } from 'lucide-react-native';
 import { MissionsApi } from '../../../../src/api/missions.api';
@@ -99,7 +99,7 @@ export default function MissionDetailScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
         <LoadingView message="Chargement des détails de la mission…" />
       </SafeAreaView>
     );
@@ -107,7 +107,7 @@ export default function MissionDetailScreen() {
 
   if (error || !mission) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ErrorView message={error || 'Mission introuvable.'} onRetry={loadMission} />
       </SafeAreaView>
     );
@@ -121,7 +121,7 @@ export default function MissionDetailScreen() {
   const sortedSteps = mission.steps.sort((a, b) => a.order - b.order);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={20} color={AppTheme.text} />
@@ -153,7 +153,7 @@ export default function MissionDetailScreen() {
             <ChartLine size={22} color={AppTheme.tracking} />
             <View style={styles.tripText}>
               <Text style={[styles.cardTitle, styles.tripTitle]}>Revoir le trajet</Text>
-              <Text style={styles.tripSub}>Vitesse, arrêts détectés, trace recalée et rejeu</Text>
+              <Text style={styles.tripSub}>Vitesse, arrêts et parcours de la journée</Text>
             </View>
             <ChevronRight size={18} color={AppTheme.textMuted} />
           </TouchableOpacity>

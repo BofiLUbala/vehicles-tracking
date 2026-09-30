@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Platform, View, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, Navigation2, RefreshCw, History, UserRound } from 'lucide-react-native';
 import { AppTheme } from '../../src/theme/colors';
 import { useSync } from '../../src/context/SyncContext';
@@ -14,14 +15,29 @@ function SyncBadge() {
   return <View style={styles.dot} />;
 }
 
+/** Hauteur utile de la barre d'onglets, hors zone système du bas. */
+const TAB_BAR_BASE_HEIGHT = 64;
+/** Respiration entre les libellés et la barre de gestes du téléphone. */
+const TAB_BAR_GAP_ABOVE_SYSTEM = 10;
+
 export default function MainTabsLayout() {
+  // La barre de gestes Android (et l'indicateur iOS) occupe le bas de l'écran : on l'ajoute à la
+  // hauteur plutôt que de fixer une hauteur qui la ferait passer par-dessus les libellés.
+  const { bottom } = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            height: TAB_BAR_BASE_HEIGHT + bottom + TAB_BAR_GAP_ABOVE_SYSTEM,
+            paddingBottom: bottom + TAB_BAR_GAP_ABOVE_SYSTEM,
+          },
+        ],
         tabBarActiveTintColor: AppTheme.tracking,
-        tabBarInactiveTintColor: AppTheme.textMuted,
+        // Lisible en extérieur : gris secondaire (4,97:1) plutôt que le gris discret.
+        tabBarInactiveTintColor: AppTheme.textSecondary,
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
       }}
@@ -100,14 +116,12 @@ const styles = StyleSheet.create({
     backgroundColor: AppTheme.card,
     borderTopWidth: 1,
     borderTopColor: AppTheme.border,
-    height: Platform.OS === 'ios' ? 82 : 62,
-    paddingTop: 6,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+    paddingTop: 8,
     elevation: 0,
     shadowOpacity: 0,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     marginTop: 2,
   },
