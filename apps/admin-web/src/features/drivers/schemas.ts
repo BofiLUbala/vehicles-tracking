@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Même règle que `PHONE_REGEX` côté API (`apps/api/src/auth/dto/request-otp.dto.ts`). */
+/** Même règle que `PHONE_REGEX` côté API (`apps/api/src/auth/dto/phone.ts`). */
 export const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
 
 export const DRIVER_STATUSES = ['ACTIVE', 'SUSPENDED', 'UNAVAILABLE', 'DISABLED'] as const;
@@ -15,3 +15,8 @@ export const driverFormSchema = z.object({
 });
 
 export type DriverFormValues = z.infer<typeof driverFormSchema>;
+
+/** Invitation : l'e-mail est obligatoire, le lien d'activation du compte mobile y est envoyé. */
+export const inviteDriverSchema = driverFormSchema.extend({
+  email: z.string().trim().min(1, 'L’e-mail est requis pour envoyer le lien d’activation').email('Adresse e-mail invalide'),
+});

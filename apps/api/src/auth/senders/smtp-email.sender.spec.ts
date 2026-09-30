@@ -89,9 +89,17 @@ describe('SmtpEmailSender — résolution DNS et transport', () => {
 
   it("l'invitation chauffeur utilise le même transport résolu", async () => {
     lookup.mockResolvedValue({ address: '203.0.113.9', family: 4 } as never);
-    await makeSender().sendDriverInvitation('driver@example.test', 'Test');
+    await makeSender().sendDriverInvitation('driver@example.test', 'Test', 'tok_123');
     expect(createTransport.mock.calls[0][0].host).toBe('203.0.113.9');
     expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({ to: 'driver@example.test' }));
+  });
+
+  it("l'invitation chauffeur contient le lien d'activation avec le jeton", async () => {
+    lookup.mockResolvedValue({ address: '203.0.113.9', family: 4 } as never);
+    await makeSender().sendDriverInvitation('driver@example.test', 'Test', 'tok_123');
+    const mail = sendMail.mock.calls[0][0];
+    expect(mail.text).toContain('https://track.bofigauthier3.workers.dev/activate?token=tok_123');
+    expect(mail.html).toContain('href="https://track.bofigauthier3.workers.dev/activate?token=tok_123"');
   });
 
   it("refuse explicitement si SMTP_HOST n'est pas configuré (sans jamais simuler un envoi)", async () => {

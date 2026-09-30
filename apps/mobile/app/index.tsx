@@ -11,8 +11,6 @@ export default function SplashScreen() {
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.replace('/(auth)/login');
-    } else if (status === 'otp_requested') {
-      router.replace('/(auth)/otp');
     } else if (status === 'authenticated') {
       router.replace('/(main)/missions');
     }

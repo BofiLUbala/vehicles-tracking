@@ -82,7 +82,8 @@ export interface InviteDriverInput {
   firstName: string;
   lastName: string;
   phone: string;
-  email?: string;
+  /** Obligatoire : reçoit le lien d'activation du compte mobile. */
+  email: string;
   licenseNumber?: string;
   status?: DriverStatus;
 }

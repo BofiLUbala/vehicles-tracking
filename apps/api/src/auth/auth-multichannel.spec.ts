@@ -8,24 +8,26 @@ import { AuthService } from './auth.service';
 import { RedisOtpStore } from './redis-otp-store.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeEventsService } from '../tracking/realtime-events.service';
-import { OTP_SENDER_EMAIL, OTP_SENDER_WHATSAPP } from './ports/otp-sender.port';
-import { AuthMode } from './dto/request-otp.dto';
+import { OTP_SENDER_EMAIL } from './ports/otp-sender.port';
+import { SmtpEmailSender } from './senders/smtp-email.sender';
+import { hashDriverLinkToken } from '../drivers/driver-link-token';
 
 jest.setTimeout(30000);
 
-describe('AuthService - Multi-Channel & Multi-Mode Security Suite', () => {
+describe('AuthService - chauffeurs par liens e-mail, admins par code', () => {
   let service: AuthService;
   let otpStore: RedisOtpStore;
   let prisma: PrismaService;
 
-  const mockWhatsappSender = {
-    channel: OtpChannel.WHATSAPP,
-    send: jest.fn().mockResolvedValue(undefined),
-  };
-
   const mockEmailSender = {
     channel: OtpChannel.EMAIL,
     send: jest.fn().mockResolvedValue(undefined),
+  };
+
+  // Liens chauffeur par e-mail (invitation, mot de passe oublié) : jamais de code.
+  const mockDriverEmails = {
+    sendDriverInvitation: jest.fn().mockResolvedValue(undefined),
+    sendDriverPasswordReset: jest.fn().mockResolvedValue(undefined),
   };
 
   // In-memory mock store for redis
@@ -52,6 +54,8 @@ describe('AuthService - Multi-Channel & Multi-Mode Security Suite', () => {
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
     },
     user: {
       findFirst: jest.fn(),
@@ -112,7 +116,7 @@ describe('AuthService - Multi-Channel & Multi-Mode Security Suite', () => {
           },
         },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: OTP_SENDER_WHATSAPP, useValue: mockWhatsappSender },
+        { provide: SmtpEmailSender, useValue: mockDriverEmails },
         { provide: OTP_SENDER_EMAIL, useValue: mockEmailSender },
         { provide: RealtimeEventsService, useValue: { emitDriverRegistered: jest.fn(), emitDriverChanged: jest.fn() } },
       ],
@@ -126,244 +130,7 @@ describe('AuthService - Multi-Channel & Multi-Mode Security Suite', () => {
     (otpStore as any).client = mockRedisClient;
   });
 
-  describe("1. L'OTP n'est plus un moyen de connexion (LOGIN désactivé)", () => {
-    it('requestOtp en LOGIN répond 410 Gone sans envoyer de code', async () => {
-      await expect(
-        service.requestOtp({ mode: AuthMode.LOGIN, channel: OtpChannel.WHATSAPP, phone: '+243989805614' }),
-      ).rejects.toThrow(GoneException);
-      expect(mockWhatsappSender.send).not.toHaveBeenCalled();
-    });
-
-    it('verifyOtp en LOGIN répond 410 Gone', async () => {
-      await expect(
-        service.verifyOtp({ mode: AuthMode.LOGIN, channel: OtpChannel.WHATSAPP, phone: '+243989805614', code: '123456' }),
-      ).rejects.toThrow(GoneException);
-    });
-
-    it('resendOtp en LOGIN répond 410 Gone', async () => {
-      await expect(
-        service.resendOtp({ mode: AuthMode.LOGIN, channel: OtpChannel.EMAIL, email: 'driver@company.cd' }),
-      ).rejects.toThrow(GoneException);
-    });
-  });
-
-  describe("2. Activation SIGN_UP : routage WhatsApp / Email", () => {
-    it("demande l'OTP d'activation via WhatsApp", async () => {
-      mockPrisma.driver.findFirst.mockResolvedValueOnce(null);
-      const res = await service.requestOtp({
-        mode: AuthMode.SIGN_UP,
-        channel: OtpChannel.WHATSAPP,
-        phone: '+243989805614',
-      });
-
-      expect(mockWhatsappSender.send).toHaveBeenCalledWith('+243989805614', expect.any(String));
-      expect(mockEmailSender.send).not.toHaveBeenCalled();
-      expect(res.message).toContain('valid');
-    });
-
-    it("demande l'OTP d'activation via Email", async () => {
-      mockPrisma.driver.findFirst.mockResolvedValueOnce(null);
-      const res = await service.requestOtp({
-        mode: AuthMode.SIGN_UP,
-        channel: OtpChannel.EMAIL,
-        email: 'driver@company.cd',
-      });
-
-      expect(mockEmailSender.send).toHaveBeenCalledWith('driver@company.cd', expect.any(String));
-      expect(mockWhatsappSender.send).not.toHaveBeenCalled();
-      expect(res.message).toContain('valid');
-    });
-
-    it('rejects duplicate SIGN_UP if active driver already exists with that phone', async () => {
-      mockPrisma.driver.findFirst.mockResolvedValueOnce({
-        id: 'd-1',
-        phone: '+243989805614',
-        status: 'ACTIVE',
-      });
-
-      await expect(
-        service.requestOtp({
-          mode: AuthMode.SIGN_UP,
-          channel: OtpChannel.WHATSAPP,
-          phone: '+243989805614',
-          firstName: 'Gauthier',
-          lastName: 'Bofi',
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('rejects duplicate SIGN_UP if active driver already exists with that email', async () => {
-      mockPrisma.driver.findFirst.mockResolvedValueOnce({
-        id: 'd-1',
-        email: 'driver@company.cd',
-        status: 'ACTIVE',
-      });
-
-      await expect(
-        service.requestOtp({
-          mode: AuthMode.SIGN_UP,
-          channel: OtpChannel.EMAIL,
-          email: 'driver@company.cd',
-          firstName: 'Gauthier',
-          lastName: 'Bofi',
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-  });
-
-  describe('3. Isolation canal / identifiant (attaques inter-canaux)', () => {
-    it('ATTACK: OTP requested for EMAIL cannot be verified via WHATSAPP with same code', async () => {
-      mockPrisma.driver.findFirst.mockResolvedValue(null);
-      const email = 'victim@example.com';
-      const req = await service.requestOtp({
-        mode: AuthMode.SIGN_UP,
-        channel: OtpChannel.EMAIL,
-        email,
-      });
-
-      const issuedCode = (req as any).devCode;
-      expect(issuedCode).toBeDefined();
-
-      // Attacker attempts to verify via WhatsApp with same code
-      await expect(
-        service.verifyOtp({
-          mode: AuthMode.SIGN_UP,
-          channel: OtpChannel.WHATSAPP,
-          phone: '+243989805614',
-          code: issuedCode,
-          password: 'AttackPass123',
-        }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('ATTACK: OTP requested for userA@example.com cannot be verified for userB@example.com', async () => {
-      mockPrisma.driver.findFirst.mockResolvedValue(null);
-      const req = await service.requestOtp({
-        mode: AuthMode.SIGN_UP,
-        channel: OtpChannel.EMAIL,
-        email: 'usera@example.com',
-      });
-
-      const issuedCode = (req as any).devCode;
-
-      await expect(
-        service.verifyOtp({
-          mode: AuthMode.SIGN_UP,
-          channel: OtpChannel.EMAIL,
-          email: 'userb@example.com',
-          code: issuedCode,
-          password: 'AttackPass123',
-        }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('ATTACK: OTP requested for WHATSAPP phone A cannot be verified for WHATSAPP phone B', async () => {
-      mockPrisma.driver.findFirst.mockResolvedValue(null);
-      const req = await service.requestOtp({
-        mode: AuthMode.SIGN_UP,
-        channel: OtpChannel.WHATSAPP,
-        phone: '+243989805614',
-      });
-
-      const issuedCode = (req as any).devCode;
-
-      await expect(
-        service.verifyOtp({
-          mode: AuthMode.SIGN_UP,
-          channel: OtpChannel.WHATSAPP,
-          phone: '+243812345678',
-          code: issuedCode,
-          password: 'AttackPass123',
-        }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-  });
-
-  describe("4. Activation réussie + connexion par mot de passe (sans OTP)", () => {
-    it('activates the invited driver on the same record and saves email and password hash', async () => {
-      const email = 'invited@company.cd';
-      const invited = {
-        id: 'driver-invited', organizationId: 'org-1', firstName: 'Jean', lastName: 'Dupont',
-        email, phone: '+243999000000', status: 'ACTIVE', passwordHash: null,
-      };
-      mockPrisma.driver.findFirst.mockResolvedValueOnce(null); // No activated account yet.
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'org-1', name: 'Régie Kinshasa' });
-      mockPrisma.driver.findFirst.mockResolvedValueOnce(invited);
-      mockPrisma.driver.update.mockImplementationOnce(async ({ data }: { data: { passwordHash: string } }) => ({
-        ...invited, ...data,
-      }));
-
-      const { devCode } = await service.requestOtp({ mode: AuthMode.SIGN_UP, channel: OtpChannel.EMAIL, email });
-      const session = await service.verifyOtp({
-        mode: AuthMode.SIGN_UP, channel: OtpChannel.EMAIL, email, code: devCode!, password: 'DriverPass123',
-      });
-
-      expect(mockPrisma.driver.create).not.toHaveBeenCalled();
-      expect(mockPrisma.driver.update).toHaveBeenCalledWith({
-        where: { id: invited.id },
-        data: expect.objectContaining({ passwordHash: expect.any(String), status: 'ACTIVE' }),
-      });
-      const savedHash = mockPrisma.driver.update.mock.calls[0][0].data.passwordHash;
-      expect(savedHash).not.toBe('DriverPass123');
-      expect(await argon2.verify(savedHash, 'DriverPass123')).toBe(true);
-      expect(session.driver.id).toBe(invited.id);
-      expect(session.driver.email).toBe(email);
-    });
-
-    it('verifies Email SIGN_UP, hashes password and registers new driver in organization', async () => {
-      const email = 'newdriver@company.cd';
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'org-1', name: 'Régie Kinshasa' });
-      mockPrisma.driver.findFirst.mockResolvedValueOnce(null); // requestOtp: not existing yet
-      mockPrisma.driver.findFirst.mockResolvedValueOnce(null); // verifyOtp: not existing yet
-      mockPrisma.driver.create.mockResolvedValueOnce({
-        id: 'driver-new',
-        organizationId: 'org-1',
-        firstName: 'Gauthier',
-        lastName: 'Mukendi',
-        email,
-        phone: null,
-        status: 'ACTIVE',
-      });
-
-      const req = await service.requestOtp({
-        mode: AuthMode.SIGN_UP,
-        channel: OtpChannel.EMAIL,
-        email,
-        firstName: 'Gauthier',
-        lastName: 'Mukendi',
-      });
-
-      const code = (req as any).devCode;
-
-      const session = await service.verifyOtp({
-        mode: AuthMode.SIGN_UP,
-        channel: OtpChannel.EMAIL,
-        email,
-        code,
-        password: 'SignupPass123',
-        firstName: 'Gauthier',
-        lastName: 'Mukendi',
-      });
-
-      expect(mockPrisma.driver.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ email, status: 'ACTIVE', passwordHash: expect.any(String) }),
-        }),
-      );
-      expect(session.driver.id).toBe('driver-new');
-      expect(session.driver.email).toBe(email);
-    });
-
-    it('rejects SIGN_UP verification without password', async () => {
-      const email = 'nopass@company.cd';
-      mockPrisma.driver.findFirst.mockResolvedValue(null);
-      const req = await service.requestOtp({ mode: AuthMode.SIGN_UP, channel: OtpChannel.EMAIL, email });
-      const code = (req as any).devCode;
-      await expect(
-        service.verifyOtp({ mode: AuthMode.SIGN_UP, channel: OtpChannel.EMAIL, email, code }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
+  describe('1. Connexion chauffeur par mot de passe (aucun code)', () => {
     it('driverLogin succeeds with password and creates no OTP request', async () => {
       const passwordHash = await argon2.hash('DriverPass123');
       mockPrisma.driver.findFirst.mockResolvedValueOnce({
@@ -412,7 +179,7 @@ describe('AuthService - Multi-Channel & Multi-Mode Security Suite', () => {
       expect(err.message).toContain('vérifier votre compte');
     });
 
-    it('driverLogin rejects active account without password, pointing to recovery', async () => {
+    it('driverLogin rejects active account without password, pointing to the coordinator', async () => {
       mockPrisma.driver.findFirst.mockResolvedValueOnce({
         id: 'driver-legacy',
         organizationId: 'org-1',
@@ -422,40 +189,111 @@ describe('AuthService - Multi-Channel & Multi-Mode Security Suite', () => {
       });
       const err = await service.driverLogin({ phone: '+243989805614', password: 'Whatever123' }).catch((e) => e);
       expect(err).toBeInstanceOf(ForbiddenException);
-      expect(err.message).toContain('Mot de passe oublié');
+      expect(err.message).toContain('renvoyer l’invitation');
     });
   });
 
-  describe('5. Récupération par OTP + refresh sans OTP', () => {
-    it('password reset sets hash, revokes sessions, then login works', async () => {
-      const phone = '+243989805614';
-      mockPrisma.driver.findFirst
-        .mockResolvedValueOnce({ id: 'd-1', status: 'ACTIVE', deletedAt: null })
-        .mockResolvedValueOnce({ id: 'd-1', status: 'ACTIVE', deletedAt: null });
+  describe('2. Mot de passe oublié chauffeur : lien par e-mail, aucun code', () => {
+    const active = {
+      id: 'd-1',
+      organizationId: 'org-1',
+      firstName: 'Jean',
+      email: 'driver@company.cd',
+      status: 'ACTIVE',
+      deletedAt: null,
+      passwordHash: 'old-hash',
+    };
 
-      const req = await service.requestPasswordReset({ channel: OtpChannel.WHATSAPP, phone });
+    it("envoie un lien (jamais un code) et ne stocke que le hash du jeton", async () => {
+      mockPrisma.driver.findFirst.mockResolvedValueOnce(active);
+      const req = await service.requestDriverPasswordReset({ email: 'Driver@Company.cd' });
+
+      expect(req.message).toContain('lien');
+      expect(mockEmailSender.send).not.toHaveBeenCalled();
+      expect(mockPrisma.otpRequest.create).not.toHaveBeenCalled();
+      const token = mockDriverEmails.sendDriverPasswordReset.mock.calls[0][2];
+      expect(mockDriverEmails.sendDriverPasswordReset).toHaveBeenCalledWith('driver@company.cd', 'Jean', token);
+      expect(mockPrisma.driver.update).toHaveBeenCalledWith({
+        where: { id: 'd-1' },
+        data: { passwordResetTokenHash: hashDriverLinkToken(token), passwordResetExpiresAt: expect.any(Date) },
+      });
+    });
+
+    it('reste générique et n’envoie rien pour un compte inconnu', async () => {
+      mockPrisma.driver.findFirst.mockResolvedValueOnce(null);
+      const req = await service.requestDriverPasswordReset({ email: 'inconnu@company.cd' });
       expect(req.message).toBeDefined();
-      const code = (req as any).devCode;
-      expect(code).toMatch(/^\d{6}$/);
+      expect(mockDriverEmails.sendDriverPasswordReset).not.toHaveBeenCalled();
+    });
 
-      const res = await service.verifyPasswordReset({ channel: OtpChannel.WHATSAPP, phone, code, newPassword: 'NewPass123' });
-      expect(res.message).toBeDefined();
-      expect(mockPrisma.driver.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ passwordHash: expect.any(String) }) }),
-      );
+    it('définit le nouveau mot de passe, consomme le jeton et ferme les sessions', async () => {
+      const token = 'reset-token-0123456789abcdef';
+      mockPrisma.driver.findUnique.mockResolvedValueOnce({
+        ...active,
+        passwordResetTokenHash: hashDriverLinkToken(token),
+        passwordResetExpiresAt: new Date(Date.now() + 60_000),
+      });
+      mockPrisma.driver.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.confirmDriverPasswordReset({ token, newPassword: 'NewPass123' });
+
+      const { where, data } = mockPrisma.driver.updateMany.mock.calls[0][0];
+      expect(where).toEqual({ id: 'd-1', passwordResetTokenHash: hashDriverLinkToken(token) });
+      expect(data.passwordResetTokenHash).toBeNull();
+      expect(await argon2.verify(data.passwordHash, 'NewPass123')).toBe(true);
       expect(mockPrisma.userSession.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ driverId: 'd-1' }) }),
       );
     });
 
-    it('password reset request stays generic for unknown accounts', async () => {
-      mockPrisma.driver.findFirst.mockResolvedValue(null);
-      const req = await service.requestPasswordReset({ channel: OtpChannel.WHATSAPP, phone: '+243800000000' });
+    it('refuse un lien expiré (410)', async () => {
+      const token = 'reset-token-0123456789abcdef';
+      mockPrisma.driver.findUnique.mockResolvedValueOnce({
+        ...active,
+        passwordResetTokenHash: hashDriverLinkToken(token),
+        passwordResetExpiresAt: new Date(Date.now() - 1000),
+      });
+      await expect(service.confirmDriverPasswordReset({ token, newPassword: 'NewPass123' })).rejects.toThrow(GoneException);
+      expect(mockPrisma.driver.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('3. Comptes admin : récupération par code e-mail uniquement', () => {
+    it("n'envoie un code qu'à un compte admin, jamais à un chauffeur", async () => {
+      mockPrisma.user.findFirst.mockResolvedValueOnce(null);
+      const req = await service.requestPasswordReset({ channel: OtpChannel.EMAIL, email: 'driver@company.cd' });
       expect(req.message).toBeDefined();
       expect((req as any).devCode).toBeUndefined();
-      expect(mockWhatsappSender.send).not.toHaveBeenCalled();
+      expect(mockEmailSender.send).not.toHaveBeenCalled();
+      expect(mockPrisma.driver.findFirst).not.toHaveBeenCalled();
     });
 
+    it('réinitialise le mot de passe admin avec le bon code et ferme ses sessions', async () => {
+      const admin = { id: 'u-1', email: 'admin@company.cd', isActive: true, deletedAt: null };
+      mockPrisma.user.findFirst.mockResolvedValue(admin);
+      const req = await service.requestPasswordReset({ channel: OtpChannel.EMAIL, email: 'admin@company.cd' });
+      const code = (req as any).devCode;
+      expect(code).toMatch(/^\d{6}$/);
+
+      await service.verifyPasswordReset({ channel: OtpChannel.EMAIL, email: 'admin@company.cd', code, newPassword: 'NewPass123' });
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'u-1' }, data: { passwordHash: expect.any(String) } }),
+      );
+      expect(mockPrisma.userSession.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ userId: 'u-1' }) }),
+      );
+    });
+
+    it('bloque la redemande de code pendant le délai anti-spam', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({ id: 'u-1', email: 'admin@company.cd', isActive: true, deletedAt: null });
+      await service.requestPasswordReset({ channel: OtpChannel.EMAIL, email: 'admin@company.cd' });
+      await expect(
+        service.requestPasswordReset({ channel: OtpChannel.EMAIL, email: 'admin@company.cd' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('4. Refresh sans code', () => {
     it('refresh creates no OTP request', async () => {
       const jwt = (service as any).jwt;
       jwt.verify.mockReturnValueOnce({ sessionId: 'sess-1', secret: 's3cr3t' });
@@ -482,22 +320,67 @@ describe('AuthService - Multi-Channel & Multi-Mode Security Suite', () => {
     });
   });
 
-  describe('6. Rate Limiting & Cooldown', () => {
-    it('prevents resend within 60 seconds cooldown', async () => {
-      mockPrisma.driver.findFirst.mockResolvedValue(null);
-      await service.requestOtp({
-        mode: AuthMode.SIGN_UP,
-        channel: OtpChannel.EMAIL,
-        email: 'test@example.com',
-      });
+  describe("5. Activation par le lien d'invitation e-mail", () => {
+    const token = 'invitation-token-0123456789abcdef';
+    const invited = {
+      id: 'drv-inv',
+      organizationId: 'org-1',
+      firstName: 'Jean',
+      lastName: 'Mputu',
+      phone: '+243999000111',
+      email: 'jean@company.cd',
+      status: 'ACTIVE',
+      passwordHash: null,
+      deletedAt: null,
+      invitationTokenHash: hashDriverLinkToken(token),
+      invitationExpiresAt: new Date(Date.now() + 60_000),
+    };
 
-      await expect(
-        service.requestOtp({
-          mode: AuthMode.SIGN_UP,
-          channel: OtpChannel.EMAIL,
-          email: 'test@example.com',
-        }),
-      ).rejects.toThrow(BadRequestException);
+    it("retrouve l'invitation par le hash du jeton, jamais par le jeton en clair", async () => {
+      mockPrisma.driver.findUnique.mockResolvedValue(invited);
+      await expect(service.getDriverInvitation({ token })).resolves.toEqual({
+        firstName: 'Jean', lastName: 'Mputu', email: 'jean@company.cd', phone: '+243999000111',
+      });
+      expect(mockPrisma.driver.findUnique).toHaveBeenCalledWith({ where: { invitationTokenHash: hashDriverLinkToken(token) } });
+    });
+
+    it('refuse un lien expiré ou déjà utilisé (410)', async () => {
+      mockPrisma.driver.findUnique.mockResolvedValueOnce({ ...invited, invitationExpiresAt: new Date(Date.now() - 1000) });
+      await expect(service.getDriverInvitation({ token })).rejects.toThrow(GoneException);
+      mockPrisma.driver.findUnique.mockResolvedValueOnce({ ...invited, passwordHash: 'hash' });
+      await expect(service.activateDriver({ token, password: 'motdepasse1' })).rejects.toThrow(GoneException);
+      mockPrisma.driver.findUnique.mockResolvedValueOnce(null);
+      await expect(service.activateDriver({ token, password: 'motdepasse1' })).rejects.toThrow(GoneException);
+      expect(mockPrisma.driver.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('définit le mot de passe, consomme le jeton et ouvre la session', async () => {
+      mockPrisma.driver.findUnique.mockResolvedValue(invited);
+      mockPrisma.driver.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.driver.findUniqueOrThrow.mockResolvedValue({ ...invited, passwordHash: 'hash', invitationTokenHash: null });
+
+      const session = await service.activateDriver({ token, password: 'motdepasse1', deviceId: 'dev-1' });
+
+      const { where, data } = mockPrisma.driver.updateMany.mock.calls[0][0];
+      expect(where).toEqual({ id: 'drv-inv', invitationTokenHash: invited.invitationTokenHash, passwordHash: null });
+      expect(data.invitationTokenHash).toBeNull();
+      expect(data.invitationExpiresAt).toBeNull();
+      expect(await argon2.verify(data.passwordHash, 'motdepasse1')).toBe(true);
+      expect(session.accessToken).toBe('test-jwt-token');
+      expect(session.driver.id).toBe('drv-inv');
+      expect(mockPrisma.device.upsert).toHaveBeenCalled();
+      expect(mockPrisma.otpRequest.create).not.toHaveBeenCalled();
+    });
+
+    it('un second clic concurrent sur le même lien est refusé', async () => {
+      mockPrisma.driver.findUnique.mockResolvedValue(invited);
+      mockPrisma.driver.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.activateDriver({ token, password: 'motdepasse1' })).rejects.toThrow(GoneException);
+    });
+
+    it("la connexion d'un chauffeur invité non activé renvoie vers le lien e-mail", async () => {
+      mockPrisma.driver.findFirst.mockResolvedValue(invited);
+      await expect(service.driverLogin({ email: 'jean@company.cd', password: 'x' })).rejects.toThrow(/lien d’activation/);
     });
   });
 });

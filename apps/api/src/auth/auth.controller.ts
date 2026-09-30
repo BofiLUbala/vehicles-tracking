@@ -1,11 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post } from '@nestjs/common';
+import { Body, Controller, Get, GoneException, HttpCode, HttpStatus, Ip, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { RequestOtpDto } from './dto/request-otp.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
-import { ResendOtpDto } from './dto/resend-otp.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { DriverLoginDto } from './dto/driver-login.dto';
+import {
+  ActivateDriverDto,
+  ConfirmDriverPasswordResetDto,
+  DriverInvitationLookupDto,
+  RequestDriverPasswordResetDto,
+} from './dto/driver-activation.dto';
 import { RequestPasswordResetDto, VerifyPasswordResetDto } from './dto/password-reset.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -14,6 +17,14 @@ import { RequestSuperAdminRegistrationDto, VerifySuperAdminRegistrationDto } fro
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser, AuthenticatedPrincipal } from '../common/decorators/current-user.decorator';
 
+/**
+ * Les chauffeurs ne reçoivent plus de code : ils activent leur compte et réinitialisent leur mot de
+ * passe par des liens envoyés par e-mail. Les anciennes routes restent pour répondre clairement aux
+ * versions précédentes de l'application.
+ */
+const DRIVER_CODE_GONE_MESSAGE =
+  'L’activation par code n’existe plus. Mettez à jour l’application, puis ouvrez le lien « Activer mon compte » reçu par e-mail.';
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -21,26 +32,26 @@ export class AuthController {
 
   @Public()
   @Post('otp/request')
-  @ApiOperation({ summary: "Demander un code OTP d’activation (inscription chauffeur, mode SIGN_UP uniquement)" })
-  @ApiResponse({ status: 201, description: 'Code envoyé (réponse générique, ne confirme pas l\'existence du compte)' })
-  @ApiResponse({ status: 410, description: 'La connexion par code n’existe plus (mode LOGIN désactivé)' })
-  requestOtp(@Body() dto: RequestOtpDto, @Ip() ip: string) {
-    return this.auth.requestOtp(dto, ip);
+  @ApiOperation({ summary: 'Supprimé : les chauffeurs activent leur compte par le lien reçu par e-mail' })
+  @ApiResponse({ status: 410 })
+  requestOtp(): never {
+    throw new GoneException(DRIVER_CODE_GONE_MESSAGE);
   }
 
   @Public()
   @Post('otp/verify')
-  @ApiOperation({ summary: 'Vérifier le code OTP d’activation et obtenir les tokens (inscription chauffeur)' })
-  @ApiResponse({ status: 410, description: 'La connexion par code n’existe plus (mode LOGIN désactivé)' })
-  verifyOtp(@Body() dto: VerifyOtpDto) {
-    return this.auth.verifyOtp(dto);
+  @ApiOperation({ summary: 'Supprimé : les chauffeurs activent leur compte par le lien reçu par e-mail' })
+  @ApiResponse({ status: 410 })
+  verifyOtp(): never {
+    throw new GoneException(DRIVER_CODE_GONE_MESSAGE);
   }
 
   @Public()
   @Post('otp/resend')
-  @ApiOperation({ summary: 'Renvoyer un code OTP d’activation (soumis à un délai anti-spam)' })
-  resendOtp(@Body() dto: ResendOtpDto, @Ip() ip: string) {
-    return this.auth.resendOtp(dto, ip);
+  @ApiOperation({ summary: 'Supprimé : les chauffeurs activent leur compte par le lien reçu par e-mail' })
+  @ApiResponse({ status: 410 })
+  resendOtp(): never {
+    throw new GoneException(DRIVER_CODE_GONE_MESSAGE);
   }
 
   @Public()
@@ -51,8 +62,41 @@ export class AuthController {
   }
 
   @Public()
+  @HttpCode(HttpStatus.OK)
+  @Post('driver/invitation')
+  @ApiOperation({ summary: 'Lire l’invitation chauffeur associée au lien reçu par e-mail' })
+  @ApiResponse({ status: 410, description: 'Lien invalide, expiré ou déjà utilisé' })
+  driverInvitation(@Body() dto: DriverInvitationLookupDto) {
+    return this.auth.getDriverInvitation(dto);
+  }
+
+  @Public()
+  @Post('driver/activate')
+  @ApiOperation({ summary: 'Activer le compte chauffeur depuis le lien d’invitation (choix du mot de passe)' })
+  @ApiResponse({ status: 410, description: 'Lien invalide, expiré ou déjà utilisé' })
+  activateDriver(@Body() dto: ActivateDriverDto, @Ip() ip: string) {
+    return this.auth.activateDriver(dto, ip);
+  }
+
+  @Public()
+  @Post('driver/password-reset/request')
+  @ApiOperation({ summary: 'Mot de passe oublié (chauffeur) : envoyer un lien de réinitialisation par e-mail' })
+  @ApiResponse({ status: 201, description: 'Réponse générique, ne confirme pas l\'existence du compte' })
+  requestDriverPasswordReset(@Body() dto: RequestDriverPasswordResetDto, @Ip() ip: string) {
+    return this.auth.requestDriverPasswordReset(dto, ip);
+  }
+
+  @Public()
+  @Post('driver/password-reset/confirm')
+  @ApiOperation({ summary: 'Définir le nouveau mot de passe chauffeur depuis le lien reçu par e-mail' })
+  @ApiResponse({ status: 410, description: 'Lien invalide, expiré ou déjà utilisé' })
+  confirmDriverPasswordReset(@Body() dto: ConfirmDriverPasswordResetDto, @Ip() ip: string) {
+    return this.auth.confirmDriverPasswordReset(dto, ip);
+  }
+
+  @Public()
   @Post('password-reset/request')
-  @ApiOperation({ summary: 'Demander un code OTP de récupération de mot de passe' })
+  @ApiOperation({ summary: 'Demander un code OTP de récupération de mot de passe (compte admin)' })
   @ApiResponse({ status: 201, description: 'Réponse générique, ne confirme pas l\'existence du compte' })
   requestPasswordReset(@Body() dto: RequestPasswordResetDto, @Ip() ip: string) {
     return this.auth.requestPasswordReset(dto, ip);
@@ -60,7 +104,7 @@ export class AuthController {
 
   @Public()
   @Post('password-reset/verify')
-  @ApiOperation({ summary: 'Vérifier le code de récupération et définir un nouveau mot de passe' })
+  @ApiOperation({ summary: 'Vérifier le code de récupération et définir un nouveau mot de passe (compte admin)' })
   verifyPasswordReset(@Body() dto: VerifyPasswordResetDto, @Ip() ip: string) {
     return this.auth.verifyPasswordReset(dto, ip);
   }

@@ -46,9 +46,10 @@ const processQueue = (error: any, token: string | null = null) => {
 function isAuthEndpoint(url?: string): boolean {
   if (!url) return false;
   return (
-    url.includes('/auth/otp/') ||
     url.includes('/auth/driver/login') ||
-    url.includes('/auth/password-reset/') ||
+    url.includes('/auth/driver/invitation') ||
+    url.includes('/auth/driver/activate') ||
+    url.includes('/auth/driver/password-reset/') ||
     url.includes('/auth/refresh') ||
     url.includes('/auth/logout')
   );

@@ -144,7 +144,7 @@ export function DriversPageClient() {
   const inviteMutation = useMutation({
     mutationFn: inviteDriver,
     onSuccess: () => {
-      toast.success('Chauffeur ajouté. Invitation envoyée si une adresse e-mail a été fournie.');
+      toast.success('Chauffeur ajouté. Le lien d’activation a été envoyé par e-mail.');
       invalidate();
       setDialogOpen(false);
     },

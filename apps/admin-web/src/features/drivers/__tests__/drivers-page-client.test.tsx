@@ -170,11 +170,28 @@ describe('DriversPageClient', () => {
     await user.type(screen.getByLabelText('Nom'), 'Curie');
     await user.selectOptions(screen.getByLabelText('Indicatif téléphonique'), '+33');
     await user.type(screen.getByLabelText('Téléphone'), '06 12 34 56 78');
+    await user.type(screen.getByLabelText('E-mail'), 'marie@exemple.com');
     await user.click(screen.getByRole('button', { name: /ajouter et inviter/i }));
 
     await waitFor(() => expect(inviteDriverMock).toHaveBeenCalledWith(
-      expect.objectContaining({ firstName: 'Marie', lastName: 'Curie', phone: '+33612345678' }),
+      expect.objectContaining({ firstName: 'Marie', lastName: 'Curie', phone: '+33612345678', email: 'marie@exemple.com' }),
     ));
+  });
+
+  it('requires an e-mail to send the activation link', async () => {
+    fetchDriversMock.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderWithClient(<DriversPageClient />);
+
+    await user.click(await screen.findByRole('button', { name: /ajouter un chauffeur/i }));
+    await user.click(screen.getByRole('button', { name: /inviter un nouveau chauffeur/i }));
+    await user.type(screen.getByLabelText('Prénom'), 'Marie');
+    await user.type(screen.getByLabelText('Nom'), 'Curie');
+    await user.type(screen.getByLabelText('Téléphone'), '0999 111 222');
+    await user.click(screen.getByRole('button', { name: /ajouter et inviter/i }));
+
+    expect(await screen.findByText(/requis pour envoyer le lien d’activation/i)).toBeInTheDocument();
+    expect(inviteDriverMock).not.toHaveBeenCalled();
   });
 
   it('explains a duplicate number before submitting the invitation', async () => {

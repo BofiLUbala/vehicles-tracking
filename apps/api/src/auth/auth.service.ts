@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, GoneException, Inject, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, GoneException, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
@@ -7,12 +7,17 @@ import { OtpChannel, OtpPurpose, RoleName } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeEventsService } from '../tracking/realtime-events.service';
 import { RedisOtpStore } from './redis-otp-store.service';
-import { OTP_SENDER_EMAIL, OTP_SENDER_WHATSAPP, OtpSenderPort } from './ports/otp-sender.port';
+import { OTP_SENDER_EMAIL, OtpSenderPort } from './ports/otp-sender.port';
+import { SmtpEmailSender } from './senders/smtp-email.sender';
 import { redactSensitive } from '../common/audit-log.util';
-import { RequestOtpDto, AuthMode } from './dto/request-otp.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
-import { ResendOtpDto } from './dto/resend-otp.dto';
 import { DriverLoginDto } from './dto/driver-login.dto';
+import {
+  ActivateDriverDto,
+  ConfirmDriverPasswordResetDto,
+  DriverInvitationLookupDto,
+  RequestDriverPasswordResetDto,
+} from './dto/driver-activation.dto';
+import { DRIVER_PASSWORD_RESET_TTL_MS, generateDriverLinkToken, hashDriverLinkToken } from '../drivers/driver-link-token';
 import { RequestPasswordResetDto, VerifyPasswordResetDto } from './dto/password-reset.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -23,10 +28,11 @@ import { RequestSuperAdminRegistrationDto, VerifySuperAdminRegistrationDto } fro
 
 const GENERIC_OTP_ERROR = 'Code invalide ou expiré';
 const GENERIC_LOGIN_ERROR = 'Identifiants invalides';
-/** L'OTP n'est plus un moyen de connexion : il ne sert qu'à l'activation / la récupération. */
-const LOGIN_OTP_GONE_MESSAGE =
-  'La connexion par code n’est plus disponible. Connectez-vous avec votre mot de passe.';
 const PENDING_ACCOUNT_MESSAGE = 'Veuillez d’abord vérifier votre compte.';
+const INVITATION_INVALID_MESSAGE =
+  'Ce lien d’activation n’est plus valide (expiré ou déjà utilisé). Demandez à votre coordinateur de vous renvoyer l’invitation.';
+const PASSWORD_RESET_LINK_INVALID_MESSAGE =
+  'Ce lien de réinitialisation n’est plus valide (expiré ou déjà utilisé). Demandez-en un nouveau depuis « Mot de passe oublié ».';
 const PASSWORD_MIN_LENGTH = 8;
 
 interface TokenPair {
@@ -44,13 +50,11 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly realtime: RealtimeEventsService,
-    @Inject(OTP_SENDER_WHATSAPP) private readonly whatsappSender: OtpSenderPort,
+    // Codes OTP : admins uniquement (activation, inscription, mot de passe oublié), par e-mail.
     @Inject(OTP_SENDER_EMAIL) private readonly emailSender: OtpSenderPort,
+    // Chauffeurs : uniquement des liens par e-mail (invitation, mot de passe oublié), jamais de code.
+    private readonly driverEmails: SmtpEmailSender,
   ) {}
-
-  private senderFor(channel: OtpChannel): OtpSenderPort {
-    return channel === OtpChannel.EMAIL ? this.emailSender : this.whatsappSender;
-  }
 
   /**
    * Les e-mails sont stockes en minuscules : toute recherche/emission d'OTP doit passer par ici,
@@ -90,11 +94,7 @@ export class AuthService {
   }
 
   // ---------------------------------------------------------------------
-  // OTP générique (chauffeurs par téléphone, admins par e-mail)
-  // ---------------------------------------------------------------------
-
-  // ---------------------------------------------------------------------
-  // OTP générique (chauffeurs par téléphone ou e-mail, admins par e-mail)
+  // OTP par e-mail : comptes admin uniquement (les chauffeurs reçoivent des liens)
   // ---------------------------------------------------------------------
 
   private async issueOtp(
@@ -127,7 +127,7 @@ export class AuthService {
     });
 
     try {
-      await this.senderFor(channel).send(identifier, code);
+      await this.emailSender.send(identifier, code);
     } catch (error) {
       // Un code qui n'a pas pu être envoyé ne doit être ni vérifiable, ni imposer
       // le délai anti-spam lors d'une nouvelle tentative.
@@ -139,82 +139,6 @@ export class AuthService {
     }
     await this.audit('otp.requested', 'otp_request', undefined, { identifier, channel, purpose, mode, deviceId, ip });
     return this.exposeDevCode ? { devCode: code } : {};
-  }
-
-  async requestOtp(dto: RequestOtpDto, ip?: string) {
-    // L'OTP n'est plus un moyen de connexion : il ne sert qu'à l'activation (SIGN_UP).
-    if ((dto.mode ?? AuthMode.LOGIN) === AuthMode.LOGIN) {
-      throw new GoneException(LOGIN_OTP_GONE_MESSAGE);
-    }
-    const mode = dto.mode ?? 'LOGIN';
-    const channel = dto.channel ?? OtpChannel.WHATSAPP;
-    const identifier =
-      channel === OtpChannel.EMAIL
-        ? this.normalizeEmail(dto.email ?? '')
-        : (dto.phone ?? '');
-    if (!identifier) {
-      throw new BadRequestException(
-        channel === OtpChannel.EMAIL
-          ? 'Une adresse e-mail valide est requise'
-          : 'Un numéro de téléphone valide est requis',
-      );
-    }
-
-    if (mode === 'SIGN_UP') {
-      // Vérification que le compte n'existe pas déjà
-      if (channel === OtpChannel.WHATSAPP) {
-        const existingDriver = await this.prisma.driver.findFirst({
-          where: { phone: identifier, deletedAt: null, status: 'ACTIVE', passwordHash: { not: null } },
-        });
-        if (existingDriver) {
-          throw new BadRequestException('Un compte existe déjà avec ce numéro de téléphone. Connectez-vous.');
-        }
-      } else {
-        const [existingDriver, existingUser] = await Promise.all([
-          this.prisma.driver.findFirst({ where: { email: identifier, deletedAt: null, status: 'ACTIVE', passwordHash: { not: null } } }),
-          this.prisma.user.findFirst({ where: { email: identifier, deletedAt: null, isActive: true } }),
-        ]);
-        if (existingDriver || existingUser) {
-          throw new BadRequestException('Un compte existe déjà avec cette adresse e-mail. Connectez-vous.');
-        }
-      }
-    }
-
-    const { devCode } = await this.issueOtp(identifier, channel, OtpPurpose.LOGIN, dto.deviceId, ip, mode);
-    return {
-      message:
-        channel === OtpChannel.EMAIL
-          ? 'Si cette adresse e-mail est valide, un code de sécurité à 6 chiffres a été envoyé.'
-          : 'Si ce numéro est valide, un code de sécurité à 6 chiffres a été envoyé.',
-      ...(devCode ? { devCode } : {}),
-    };
-  }
-
-  async resendOtp(dto: ResendOtpDto, ip?: string) {
-    if ((dto.mode ?? AuthMode.LOGIN) === AuthMode.LOGIN) {
-      throw new GoneException(LOGIN_OTP_GONE_MESSAGE);
-    }
-    const mode = dto.mode ?? 'LOGIN';
-    const channel = dto.channel ?? OtpChannel.WHATSAPP;
-    const identifier =
-      channel === OtpChannel.EMAIL
-        ? this.normalizeEmail(dto.email ?? '')
-        : (dto.phone ?? '');
-    if (!identifier) {
-      throw new BadRequestException(
-        channel === OtpChannel.EMAIL
-          ? 'Une adresse e-mail valide est requise'
-          : 'Un numéro de téléphone valide est requis',
-      );
-    }
-    const { devCode } = await this.issueOtp(identifier, channel, OtpPurpose.LOGIN, dto.deviceId, ip, mode);
-    return {
-      message:
-        channel === OtpChannel.EMAIL
-          ? 'Si cette adresse e-mail est valide, un nouveau code a été envoyé.'
-          : 'Si ce numéro est valide, un nouveau code a été envoyé.',
-      ...(devCode ? { devCode } : {}),
-    };
   }
 
   private async verifyOtpCode(identifier: string, channel: OtpChannel, code: string, mode = 'LOGIN'): Promise<boolean> {
@@ -241,125 +165,6 @@ export class AuthService {
     return true;
   }
 
-  async verifyOtp(dto: VerifyOtpDto) {
-    // L'OTP n'est plus un moyen de connexion : il ne sert qu'à l'activation (SIGN_UP).
-    if ((dto.mode ?? AuthMode.LOGIN) === AuthMode.LOGIN) {
-      throw new GoneException(LOGIN_OTP_GONE_MESSAGE);
-    }
-    const mode = dto.mode ?? 'LOGIN';
-    const channel = dto.channel ?? OtpChannel.WHATSAPP;
-    const identifier =
-      channel === OtpChannel.EMAIL
-        ? this.normalizeEmail(dto.email ?? '')
-        : (dto.phone ?? '');
-    if (!identifier) {
-      throw new BadRequestException(
-        channel === OtpChannel.EMAIL
-          ? 'Une adresse e-mail valide est requise'
-          : 'Un numéro de téléphone valide est requis',
-      );
-    }
-
-    const ok = await this.verifyOtpCode(identifier, channel, dto.code, mode);
-    if (!ok) throw new UnauthorizedException(GENERIC_OTP_ERROR);
-
-    if (mode === 'SIGN_UP') {
-      // Activation unique du compte : l'OTP prouve la propriété de l'identifiant, le mot de passe
-      // sert ensuite aux connexions normales (sans OTP).
-      if (!dto.password || dto.password.length < PASSWORD_MIN_LENGTH) {
-        throw new BadRequestException('Un mot de passe d’au moins 8 caractères est requis pour activer le compte');
-      }
-      // Organisation d'accueil du nouveau chauffeur. Le CLIENT ne la choisit jamais : le backend
-      // fait foi. `DEFAULT_DRIVER_ORGANIZATION_ID` désigne l'organisation opérationnelle, afin que
-      // les chauffeurs inscrits depuis le mobile apparaissent dans l'admin de cette organisation.
-      // Sans configuration, repli déterministe sur la plus ancienne organisation : `findFirst()`
-      // sans `orderBy` renvoyait une organisation ARBITRAIRE, donc des chauffeurs pouvaient être
-      // rattachés à n'importe quel tenant (bug réel constaté en base).
-      const configuredOrganizationId = this.config.get<string>('DEFAULT_DRIVER_ORGANIZATION_ID')?.trim();
-      let organization = configuredOrganizationId
-        ? await this.prisma.organization.findUnique({ where: { id: configuredOrganizationId } })
-        : await this.prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } });
-      if (configuredOrganizationId && !organization) {
-        throw new ServiceUnavailableException(
-          "Organisation d'inscription introuvable (DEFAULT_DRIVER_ORGANIZATION_ID). Contactez l'administrateur.",
-        );
-      }
-      if (!organization) {
-        organization = await this.prisma.organization.create({
-          data: { name: 'Régie de collecte des déchets — Kinshasa' },
-        });
-      }
-
-      let driver = channel === OtpChannel.WHATSAPP
-        ? await this.prisma.driver.findFirst({ where: { phone: identifier } })
-        : await this.prisma.driver.findFirst({ where: { email: identifier } });
-
-      if (driver) {
-        driver = await this.prisma.driver.update({
-          where: { id: driver.id },
-          data: {
-            firstName: dto.firstName?.trim() || driver.firstName,
-            lastName: dto.lastName?.trim() || driver.lastName,
-            passwordHash: await argon2.hash(dto.password),
-            status: 'ACTIVE',
-            deletedAt: null,
-          },
-        });
-      } else {
-        driver = await this.prisma.driver.create({
-          data: {
-            organizationId: organization.id,
-            firstName: dto.firstName?.trim() || 'Chauffeur',
-            lastName: dto.lastName?.trim() || '',
-            phone: channel === OtpChannel.WHATSAPP ? identifier : dto.phone || null,
-            email: channel === OtpChannel.EMAIL ? identifier : dto.email ? this.normalizeEmail(dto.email) : null,
-            passwordHash: await argon2.hash(dto.password),
-            status: 'ACTIVE',
-          },
-        });
-      }
-
-      if (dto.deviceId) {
-        await this.prisma.device.upsert({
-          where: { deviceId: dto.deviceId },
-          update: { driverId: driver.id, lastSeenAt: new Date(), revokedAt: null },
-          create: { deviceId: dto.deviceId, driverId: driver.id, lastSeenAt: new Date() },
-        });
-      }
-
-      // PRIMARY ARCHITECTURE : le compte `Driver` existe déjà (créé/réactivé ici), aucun doublon. On
-      // prévient l'admin en temps réel pour qu'il puisse lier/inviter le chauffeur sans redémarrer.
-      this.realtime.emitDriverRegistered({
-        organizationId: driver.organizationId,
-        driverId: driver.id,
-        status: driver.status,
-      });
-
-      const tokens = await this.issueTokenPair({
-        sub: driver.id,
-        type: 'driver',
-        role: RoleName.DRIVER,
-        organizationId: driver.organizationId,
-        deviceId: dto.deviceId,
-      });
-      await this.audit('auth.signup', 'driver', driver.id, { deviceId: dto.deviceId, channel }, driver.id);
-      return {
-        ...tokens,
-        driver: {
-          id: driver.id,
-          firstName: driver.firstName,
-          lastName: driver.lastName,
-          phone: driver.phone || '',
-          email: driver.email || '',
-          status: driver.status,
-        },
-      };
-    }
-
-    // L'OTP ne sert plus à la connexion : toute demande LOGIN est rejetée en tête de méthode.
-    throw new GoneException(LOGIN_OTP_GONE_MESSAGE);
-  }
-
   // ---------------------------------------------------------------------
   // Chauffeur : connexion par identifiant + mot de passe (sans OTP)
   // ---------------------------------------------------------------------
@@ -381,8 +186,11 @@ export class AuthService {
     if (driver.status !== 'ACTIVE') {
       throw new ForbiddenException('Compte chauffeur désactivé ou suspendu');
     }
+    if (!driver.passwordHash && driver.invitationTokenHash) {
+      throw new ForbiddenException('Compte pas encore activé. Ouvrez le lien d’activation reçu par e-mail pour choisir votre mot de passe.');
+    }
     if (!driver.passwordHash) {
-      throw new ForbiddenException('Aucun mot de passe défini pour ce compte. Utilisez « Mot de passe oublié » pour en créer un.');
+      throw new ForbiddenException('Aucun mot de passe défini pour ce compte. Demandez à votre coordinateur de vous renvoyer l’invitation.');
     }
     const passwordOk = await argon2.verify(driver.passwordHash, dto.password).catch(() => false);
     if (!passwordOk) {
@@ -419,85 +227,160 @@ export class AuthService {
   }
 
   // ---------------------------------------------------------------------
-  // Mot de passe oublié : OTP de récupération (seul usage d'OTP hors activation)
+  // Chauffeur : activation par le lien d'invitation reçu par e-mail
+  // ---------------------------------------------------------------------
+
+  /** Chauffeur invité correspondant à un jeton encore valide (jamais activé, non expiré). */
+  private async findInvitedDriver(token: string) {
+    const driver = await this.prisma.driver.findUnique({
+      where: { invitationTokenHash: hashDriverLinkToken(token) },
+    });
+    if (
+      !driver ||
+      driver.deletedAt ||
+      driver.passwordHash ||
+      !driver.invitationExpiresAt ||
+      driver.invitationExpiresAt.getTime() < Date.now()
+    ) {
+      throw new GoneException(INVITATION_INVALID_MESSAGE);
+    }
+    return driver;
+  }
+
+  async getDriverInvitation(dto: DriverInvitationLookupDto) {
+    const driver = await this.findInvitedDriver(dto.token);
+    return { firstName: driver.firstName, lastName: driver.lastName, email: driver.email, phone: driver.phone };
+  }
+
+  async activateDriver(dto: ActivateDriverDto, ip?: string) {
+    const invited = await this.findInvitedDriver(dto.token);
+    // Le jeton est consommé dans la même écriture que le mot de passe (usage unique). Le filtre sur
+    // le hash empêche deux activations concurrentes du même lien.
+    const { count } = await this.prisma.driver.updateMany({
+      where: { id: invited.id, invitationTokenHash: invited.invitationTokenHash, passwordHash: null },
+      data: {
+        passwordHash: await argon2.hash(dto.password),
+        // L'admin a pu choisir un statut opérationnel (suspendu, indisponible…) : on le conserve.
+        status: invited.status === 'PENDING_VERIFICATION' ? 'ACTIVE' : invited.status,
+        invitationTokenHash: null,
+        invitationExpiresAt: null,
+      },
+    });
+    if (count === 0) throw new GoneException(INVITATION_INVALID_MESSAGE);
+    const driver = await this.prisma.driver.findUniqueOrThrow({ where: { id: invited.id } });
+
+    if (dto.deviceId) {
+      await this.prisma.device.upsert({
+        where: { deviceId: dto.deviceId },
+        update: { driverId: driver.id, lastSeenAt: new Date(), revokedAt: null },
+        create: { deviceId: dto.deviceId, driverId: driver.id, lastSeenAt: new Date() },
+      });
+    }
+
+    this.realtime.emitDriverRegistered({
+      organizationId: driver.organizationId,
+      driverId: driver.id,
+      status: driver.status,
+    });
+
+    const tokens = await this.issueTokenPair({
+      sub: driver.id,
+      type: 'driver',
+      role: RoleName.DRIVER,
+      organizationId: driver.organizationId,
+      deviceId: dto.deviceId,
+    });
+    await this.audit('auth.driver.activated', 'driver', driver.id, { deviceId: dto.deviceId, ip }, driver.id);
+    return {
+      ...tokens,
+      driver: {
+        id: driver.id,
+        firstName: driver.firstName,
+        lastName: driver.lastName,
+        phone: driver.phone || '',
+        email: driver.email || '',
+        status: driver.status,
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Chauffeur : mot de passe oublié par lien e-mail (aucun code)
+  // ---------------------------------------------------------------------
+
+  async requestDriverPasswordReset(dto: RequestDriverPasswordResetDto, ip?: string) {
+    const email = this.normalizeEmail(dto.email);
+    const driver = await this.prisma.driver.findFirst({
+      where: { email, status: 'ACTIVE', deletedAt: null, passwordHash: { not: null } },
+    });
+    if (driver) {
+      const { token, tokenHash, expiresAt } = generateDriverLinkToken(DRIVER_PASSWORD_RESET_TTL_MS);
+      await this.prisma.driver.update({
+        where: { id: driver.id },
+        data: { passwordResetTokenHash: tokenHash, passwordResetExpiresAt: expiresAt },
+      });
+      await this.driverEmails.sendDriverPasswordReset(email, driver.firstName, token);
+      await this.audit('auth.password_reset.requested', 'driver', driver.id, { ip }, driver.id);
+    }
+    // Réponse générique : ne confirme jamais l'existence du compte.
+    return { message: 'Si ce compte existe et est actif, un lien de réinitialisation a été envoyé par e-mail.' };
+  }
+
+  async confirmDriverPasswordReset(dto: ConfirmDriverPasswordResetDto, ip?: string) {
+    const tokenHash = hashDriverLinkToken(dto.token);
+    const driver = await this.prisma.driver.findUnique({ where: { passwordResetTokenHash: tokenHash } });
+    if (
+      !driver ||
+      driver.deletedAt ||
+      driver.status !== 'ACTIVE' ||
+      !driver.passwordResetExpiresAt ||
+      driver.passwordResetExpiresAt.getTime() < Date.now()
+    ) {
+      throw new GoneException(PASSWORD_RESET_LINK_INVALID_MESSAGE);
+    }
+    // Jeton consommé dans la même écriture que le mot de passe : un lien ne sert qu'une fois.
+    const { count } = await this.prisma.driver.updateMany({
+      where: { id: driver.id, passwordResetTokenHash: tokenHash },
+      data: { passwordHash: await argon2.hash(dto.newPassword), passwordResetTokenHash: null, passwordResetExpiresAt: null },
+    });
+    if (count === 0) throw new GoneException(PASSWORD_RESET_LINK_INVALID_MESSAGE);
+    // Les sessions ouvertes avec l'ancien mot de passe sont fermées.
+    await this.prisma.userSession.updateMany({ where: { driverId: driver.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.audit('auth.password_reset.completed', 'driver', driver.id, { ip, via: 'link' }, driver.id);
+    return { message: 'Mot de passe réinitialisé. Vous pouvez maintenant vous connecter.' };
+  }
+
+  // ---------------------------------------------------------------------
+  // Admin : mot de passe oublié par code OTP e-mail
   // ---------------------------------------------------------------------
 
   async requestPasswordReset(dto: RequestPasswordResetDto, ip?: string) {
-    const channel = dto.channel ?? OtpChannel.WHATSAPP;
-    const identifier =
-      channel === OtpChannel.EMAIL
-        ? this.normalizeEmail(dto.email ?? '')
-        : (dto.phone ?? '');
-    if (!identifier) {
-      throw new BadRequestException(
-        channel === OtpChannel.EMAIL
-          ? 'Une adresse e-mail valide est requise'
-          : 'Un numéro de téléphone valide est requis',
-      );
+    const email = this.normalizeEmail(dto.email);
+    if (!email) {
+      throw new BadRequestException('Une adresse e-mail valide est requise');
     }
-
-    let accountFound = false;
-    if (channel === OtpChannel.WHATSAPP) {
-      accountFound = !!(await this.prisma.driver.findFirst({
-        where: { phone: identifier, status: 'ACTIVE', deletedAt: null },
-      }));
-    } else {
-      const [driver, user] = await Promise.all([
-        this.prisma.driver.findFirst({ where: { email: identifier, status: 'ACTIVE', deletedAt: null } }),
-        this.prisma.user.findFirst({ where: { email: identifier, isActive: true, deletedAt: null } }),
-      ]);
-      accountFound = !!(driver || user);
-    }
-
+    const user = await this.prisma.user.findFirst({ where: { email, isActive: true, deletedAt: null } });
     let devCode: string | undefined;
-    if (accountFound) {
-      ({ devCode } = await this.issueOtp(identifier, channel, OtpPurpose.PASSWORD_RESET, undefined, ip, 'PASSWORD_RESET'));
+    if (user) {
+      ({ devCode } = await this.issueOtp(email, OtpChannel.EMAIL, OtpPurpose.PASSWORD_RESET, undefined, ip, 'PASSWORD_RESET'));
     }
     // Réponse générique : ne confirme jamais l'existence du compte.
     return { message: 'Si ce compte existe et est actif, un code de récupération a été envoyé.', ...(devCode ? { devCode } : {}) };
   }
 
   async verifyPasswordReset(dto: VerifyPasswordResetDto, ip?: string) {
-    const channel = dto.channel ?? OtpChannel.WHATSAPP;
-    const identifier =
-      channel === OtpChannel.EMAIL
-        ? this.normalizeEmail(dto.email ?? '')
-        : (dto.phone ?? '');
-    if (!identifier) {
-      throw new BadRequestException(
-        channel === OtpChannel.EMAIL
-          ? 'Une adresse e-mail valide est requise'
-          : 'Un numéro de téléphone valide est requis',
-      );
+    const email = this.normalizeEmail(dto.email);
+    if (!email) {
+      throw new BadRequestException('Une adresse e-mail valide est requise');
     }
-
-    const ok = await this.verifyOtpCode(identifier, channel, dto.code, 'PASSWORD_RESET');
+    const ok = await this.verifyOtpCode(email, OtpChannel.EMAIL, dto.code, 'PASSWORD_RESET');
     if (!ok) throw new UnauthorizedException(GENERIC_OTP_ERROR);
 
-    const passwordHash = await argon2.hash(dto.newPassword);
-    if (channel === OtpChannel.WHATSAPP) {
-      const driver = await this.prisma.driver.findFirst({ where: { phone: identifier, status: 'ACTIVE', deletedAt: null } });
-      if (!driver) throw new UnauthorizedException(GENERIC_OTP_ERROR);
-      await this.prisma.driver.update({ where: { id: driver.id }, data: { passwordHash } });
-      await this.prisma.userSession.updateMany({ where: { driverId: driver.id, revokedAt: null }, data: { revokedAt: new Date() } });
-      await this.audit('auth.password_reset.completed', 'driver', driver.id, { channel, ip }, driver.id);
-    } else {
-      const driver = await this.prisma.driver.findFirst({ where: { email: identifier, status: 'ACTIVE', deletedAt: null } });
-      const user = driver
-        ? null
-        : await this.prisma.user.findFirst({ where: { email: identifier, isActive: true, deletedAt: null } });
-      if (driver) {
-        await this.prisma.driver.update({ where: { id: driver.id }, data: { passwordHash } });
-        await this.prisma.userSession.updateMany({ where: { driverId: driver.id, revokedAt: null }, data: { revokedAt: new Date() } });
-        await this.audit('auth.password_reset.completed', 'driver', driver.id, { channel, ip }, driver.id);
-      } else if (user) {
-        await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-        await this.prisma.userSession.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
-        await this.audit('auth.password_reset.completed', 'user', user.id, { channel, ip }, user.id);
-      } else {
-        throw new UnauthorizedException(GENERIC_OTP_ERROR);
-      }
-    }
+    const user = await this.prisma.user.findFirst({ where: { email, isActive: true, deletedAt: null } });
+    if (!user) throw new UnauthorizedException(GENERIC_OTP_ERROR);
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await argon2.hash(dto.newPassword) } });
+    await this.prisma.userSession.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.audit('auth.password_reset.completed', 'user', user.id, { channel: OtpChannel.EMAIL, ip }, user.id);
     return { message: 'Mot de passe réinitialisé. Vous pouvez maintenant vous connecter.' };
   }
 

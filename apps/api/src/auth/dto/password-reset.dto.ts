@@ -1,31 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, Matches, MinLength, ValidateIf } from 'class-validator';
+import { Equals, IsEmail, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 import { OtpChannel } from '@prisma/client';
-import { PHONE_REGEX } from './request-otp.dto';
 
 /**
- * Mot de passe oublié : OTP de récupération (chauffeur par téléphone/e-mail,
- * admin par e-mail), puis définition d'un nouveau mot de passe.
- * La connexion normale reste sans OTP.
+ * Mot de passe oublié d'un compte ADMIN : code OTP envoyé par e-mail, puis nouveau mot de passe.
+ * Les chauffeurs ne reçoivent pas de code : voir `RequestDriverPasswordResetDto` (lien par e-mail).
  */
 export class RequestPasswordResetDto {
-  @ApiProperty({ enum: OtpChannel, required: false, default: OtpChannel.WHATSAPP, description: 'Canal de récupération' })
+  @ApiProperty({ enum: [OtpChannel.EMAIL], required: false, default: OtpChannel.EMAIL, description: 'Canal de récupération (e-mail uniquement)' })
   @IsOptional()
-  @IsEnum(OtpChannel)
+  @Equals(OtpChannel.EMAIL, { message: 'La récupération se fait uniquement par e-mail' })
   channel?: OtpChannel;
 
-  @ApiProperty({ example: '+243999000000', required: false, description: 'Numéro de téléphone format E.164 (canal WHATSAPP)' })
-  @IsOptional()
-  @ValidateIf((o) => !o.channel || o.channel === OtpChannel.WHATSAPP)
-  @IsString({ message: 'Le numéro de téléphone est requis pour le canal WhatsApp' })
-  @Matches(PHONE_REGEX, { message: 'Le numéro doit être au format E.164, ex: +243999000000' })
-  phone?: string;
-
-  @ApiProperty({ example: 'driver@example.com', required: false, description: 'Adresse e-mail (canal EMAIL)' })
-  @IsOptional()
-  @ValidateIf((o) => o.channel === OtpChannel.EMAIL)
+  @ApiProperty({ example: 'admin@example.com', description: 'Adresse e-mail du compte admin' })
   @IsEmail({}, { message: 'Adresse e-mail invalide' })
-  email?: string;
+  email!: string;
 }
 
 export class VerifyPasswordResetDto extends RequestPasswordResetDto {

@@ -183,18 +183,74 @@ export class SmtpEmailSender implements OtpSenderPort, OnModuleInit, OnModuleDes
     this.resetTransporter();
   }
 
-  async sendDriverInvitation(email: string, firstName: string): Promise<void> {
+  /**
+   * Lien chauffeur (`/activate` ou `/reset-password`) avec son jeton. Le Worker Cloudflare `track`
+   * sert ces pages et `/.well-known/assetlinks.json` : sur Android, le lien ouvre directement l'app.
+   */
+  driverAppLink(path: 'activate' | 'reset-password', token: string): string {
+    const base = (this.config.get<string>('DRIVER_APP_LINK_BASE_URL')?.trim() || 'https://track.bofigauthier3.workers.dev').replace(/\/+$/, '');
+    return `${base}/${path}?token=${encodeURIComponent(token)}`;
+  }
+
+  /** E-mail contenant un bouton vers un lien chauffeur (texte brut + HTML). */
+  private async sendDriverLinkEmail(
+    email: string,
+    firstName: string,
+    subject: string,
+    intro: string,
+    buttonLabel: string,
+    link: string,
+    validity: string,
+  ): Promise<void> {
+    const safeName = firstName.replace(/[<>&"']/g, '');
+    const transporter = await this.getTransporter();
+    await transporter.sendMail({
+      from: this.config.get<string>('SMTP_FROM') || this.config.get<string>('SMTP_USER'),
+      to: email,
+      subject,
+      text: `Bonjour ${firstName},\n\n${intro}\n\n${buttonLabel} : ${link}\n\nOuvrez ce lien sur votre téléphone Android. Si l'application n'est pas encore installée, le lien vous propose de l'installer. ${validity}\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
+      html: `<p>Bonjour ${safeName},</p>
+<p>${intro}</p>
+<p><a href="${link}" style="display:inline-block;padding:12px 20px;background:#0B8FCB;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600">${buttonLabel}</a></p>
+<p style="color:#555;font-size:13px">Ouvrez ce lien sur votre téléphone Android. Si le bouton ne fonctionne pas, copiez ce lien :<br><a href="${link}">${link}</a></p>
+<p style="color:#555;font-size:13px">Si l'application n'est pas encore installée, le lien vous propose de l'installer. ${validity}</p>
+<p style="color:#555;font-size:13px">Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.</p>`,
+    });
+  }
+
+  async sendDriverInvitation(email: string, firstName: string, token: string): Promise<void> {
     try {
-      const transporter = await this.getTransporter();
-      await transporter.sendMail({
-        from: this.config.get<string>('SMTP_FROM') || this.config.get<string>('SMTP_USER'),
-        to: email,
-        subject: 'Invitation à rejoindre Tracking Vehicles',
-        text: `Bonjour ${firstName},\n\nVotre organisation vous invite à utiliser l'application mobile Tracking Vehicles. Ouvrez l'application, choisissez « Créer un compte », puis inscrivez-vous avec cette adresse e-mail. Un code de vérification vous sera envoyé pour activer votre compte. Vous pourrez ensuite vous connecter avec votre e-mail et le mot de passe choisi.\n\nSi vous n'attendiez pas cette invitation, ignorez ce message.`,
-      });
+      await this.sendDriverLinkEmail(
+        email,
+        firstName,
+        'Activez votre compte chauffeur Tracking Vehicles',
+        "Votre organisation vous invite à utiliser l'application mobile Tracking Vehicles. Touchez le bouton ci-dessous pour activer votre compte et choisir votre mot de passe.",
+        'Activer mon compte',
+        this.driverAppLink('activate', token),
+        'Ce lien est personnel et valable 7 jours.',
+      );
     } catch (err) {
       this.logger.error(`Échec d'invitation SMTP pour ${email}: ${err instanceof Error ? err.message : 'erreur inconnue'}`);
       throw new ServiceUnavailableException("Le service d’envoi d’e-mail est momentanément indisponible. Réessayez dans quelques instants.");
     }
   }
+
+  async sendDriverPasswordReset(email: string, firstName: string, token: string): Promise<void> {
+    try {
+      await this.sendDriverLinkEmail(
+        email,
+        firstName,
+        'Réinitialisez votre mot de passe Tracking Vehicles',
+        'Vous avez demandé à réinitialiser le mot de passe de votre compte chauffeur. Touchez le bouton ci-dessous pour en choisir un nouveau.',
+        'Choisir un nouveau mot de passe',
+        this.driverAppLink('reset-password', token),
+        'Ce lien est personnel et valable 1 heure.',
+      );
+    } catch (err) {
+      this.logger.error(`Échec d'envoi du lien de réinitialisation pour ${email}: ${err instanceof Error ? err.message : 'erreur inconnue'}`);
+      throw new ServiceUnavailableException("Le service d’envoi d’e-mail est momentanément indisponible. Réessayez dans quelques instants.");
+    }
+  }
+
+
 }

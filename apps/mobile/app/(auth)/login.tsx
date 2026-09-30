@@ -10,33 +10,30 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import { MessageCircle, Mail, Check } from 'lucide-react-native';
+import { Mail, Check } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { BigButton } from '../../src/components/BigButton';
 import { AppTextField } from '../../src/components/AppTextField';
-import { AppRadius, AppShadow, AppSpacing, AppTheme } from '../../src/theme/colors';
-import { AuthChannel } from '../../src/types/auth.types';
-import { isValidEmail, isValidPhoneNumber } from '../../src/utils/phone';
+import { AppRadius, AppSpacing, AppTheme } from '../../src/theme/colors';
+import { isValidEmail } from '../../src/utils/phone';
 import { AuthService } from '../../src/services/auth.service';
 
-type AuthView = 'login' | 'signup' | 'recovery';
+type AuthView = 'login' | 'recovery';
 
+/**
+ * Connexion chauffeur par identifiant + mot de passe. Il n'y a pas d'inscription ici : l'admin invite
+ * le chauffeur, qui active son compte en ouvrant le lien reçu par e-mail (écran `activate`).
+ */
 export default function LoginScreen() {
   const [view, setView] = useState<AuthView>('login');
-  const [channel, setChannel] = useState<AuthChannel>('WHATSAPP');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
   const [identifierInput, setIdentifierInput] = useState('');
-  const [phoneInput, setPhoneInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [rememberCredentials, setRememberCredentials] = useState(false);
-  const [signupPassword, setSignupPassword] = useState('');
   const {
     loginWithPassword,
-    startSignup,
-    startPasswordReset,
+    requestPasswordReset,
     isLoading,
     error,
     notice,
@@ -56,29 +53,14 @@ export default function LoginScreen() {
     return () => { active = false; };
   }, []);
 
-  const isSignupIdentifierValid =
-    channel === 'WHATSAPP'
-      ? isValidPhoneNumber(phoneInput) || phoneInput.trim().length >= 8
-      : isValidEmail(emailInput);
-
   const isLoginValid = identifierInput.trim().length >= 3 && passwordInput.length >= 1;
-  const isSignupValid =
-    isSignupIdentifierValid &&
-    firstName.trim().length >= 2 &&
-    lastName.trim().length >= 2 &&
-    signupPassword.length >= 8;
-  const isRecoveryValid = isSignupIdentifierValid;
+  const isRecoveryValid = isValidEmail(emailInput.trim());
 
   const switchView = (next: AuthView) => {
     clearError();
     clearNotice();
     setPasswordInput('');
     setView(next);
-  };
-
-  const handleChannelChange = (newChannel: AuthChannel) => {
-    clearError();
-    setChannel(newChannel);
   };
 
   const handleLogin = async () => {
@@ -106,30 +88,10 @@ export default function LoginScreen() {
     setRememberCredentials((value) => !value);
   };
 
-  const handleSignup = async () => {
-    const target = channel === 'WHATSAPP' ? phoneInput : emailInput;
-    if (!target.trim()) return;
-    clearError();
-    const success = await startSignup({
-      channel,
-      target,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      password: signupPassword,
-    });
-    if (success) {
-      router.push('/(auth)/otp');
-    }
-  };
-
   const handleRecoveryRequest = async () => {
-    const target = channel === 'WHATSAPP' ? phoneInput : emailInput;
-    if (!target.trim()) return;
+    if (!emailInput.trim()) return;
     clearError();
-    const success = await startPasswordReset(channel, target);
-    if (success) {
-      router.push('/(auth)/otp');
-    }
+    await requestPasswordReset(emailInput);
   };
 
   return (
@@ -153,117 +115,14 @@ export default function LoginScreen() {
             />
             <Text style={styles.welcomeText}>Bienvenue</Text>
 
-            {view !== 'recovery' && (
-              <View style={styles.modeSegmentedControl}>
-                <TouchableOpacity
-                  style={[
-                    styles.modeSegmentOption,
-                    view === 'login' && styles.modeSegmentOptionActive,
-                  ]}
-                  onPress={() => switchView('login')}
-                  activeOpacity={0.8}
-                  accessibilityRole="tab"
-                  accessibilityLabel="Connexion"
-                >
-                  <Text
-                    style={[
-                      styles.modeSegmentText,
-                      view === 'login' && styles.modeSegmentTextActive,
-                    ]}
-                  >
-                    Connexion
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.modeSegmentOption,
-                    view === 'signup' && styles.modeSegmentOptionActive,
-                  ]}
-                  onPress={() => switchView('signup')}
-                  activeOpacity={0.8}
-                  accessibilityRole="tab"
-                  accessibilityLabel="Créer un compte"
-                >
-                  <Text
-                    style={[
-                      styles.modeSegmentText,
-                      view === 'signup' && styles.modeSegmentTextActive,
-                    ]}
-                  >
-                    Activer mon compte
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
             <Text style={styles.title}>
-              {view === 'login' ? 'Connexion' : view === 'signup' ? 'Activer votre compte' : 'Mot de passe oublié'}
+              {view === 'login' ? 'Connexion' : 'Mot de passe oublié'}
             </Text>
             <Text style={styles.subtitle}>
               {view === 'login'
                 ? 'Connectez-vous avec votre identifiant et votre mot de passe.'
-                : view === 'signup'
-                  ? 'Saisissez l’adresse e-mail ou le numéro utilisé dans l’invitation, puis créez votre mot de passe.'
-                  : 'Recevez un code de récupération, puis définissez un nouveau mot de passe.'}
+                : 'Recevez par e-mail un lien pour choisir un nouveau mot de passe.'}
             </Text>
-
-            {view !== 'login' && (
-              <View style={styles.channelContainer}>
-                <Text style={styles.channelLabel}>Méthode de vérification</Text>
-                <View style={styles.segmentedControl}>
-                  <TouchableOpacity
-                    style={[
-                      styles.segmentOption,
-                      channel === 'WHATSAPP' && styles.segmentOptionActive,
-                    ]}
-                    onPress={() => handleChannelChange('WHATSAPP')}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.segmentContent}>
-                      <MessageCircle
-                        size={16}
-                        color={channel === 'WHATSAPP' ? AppTheme.tracking : AppTheme.textMuted}
-                        strokeWidth={2}
-                      />
-                      <Text
-                        style={[
-                          styles.segmentText,
-                          channel === 'WHATSAPP' && styles.segmentTextActive,
-                        ]}
-                      >
-                        WhatsApp
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.segmentOption,
-                      channel === 'EMAIL' && styles.segmentOptionActive,
-                    ]}
-                    onPress={() => handleChannelChange('EMAIL')}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.segmentContent}>
-                      <Mail
-                        size={16}
-                        color={channel === 'EMAIL' ? AppTheme.tracking : AppTheme.textMuted}
-                        strokeWidth={2}
-                      />
-                      <Text
-                        style={[
-                          styles.segmentText,
-                          channel === 'EMAIL' && styles.segmentTextActive,
-                        ]}
-                      >
-                        E-mail
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
           </View>
 
           <View style={styles.formSection}>
@@ -327,133 +186,40 @@ export default function LoginScreen() {
                 >
                   <Text style={styles.linkText}>Mot de passe oublié ?</Text>
                 </TouchableOpacity>
-              </>
-            )}
 
-            {view === 'signup' && (
-              <>
-                <View style={styles.nameRow}>
-                  <View style={styles.nameField}>
-                    <AppTextField
-                      label="Prénom"
-                      placeholder="Gauthier"
-                      value={firstName}
-                      onChangeText={(text) => {
-                        clearError();
-                        setFirstName(text);
-                      }}
-                    />
-                  </View>
-                  <View style={styles.nameField}>
-                    <AppTextField
-                      label="Nom"
-                      placeholder="Bofi"
-                      value={lastName}
-                      onChangeText={(text) => {
-                        clearError();
-                        setLastName(text);
-                      }}
-                    />
-                  </View>
+                <View style={styles.inviteHint}>
+                  <Mail size={18} color={AppTheme.tracking} strokeWidth={2} />
+                  <Text style={styles.inviteHintText}>
+                    Première connexion ? Ouvrez sur ce téléphone le lien « Activer mon compte » reçu par e-mail
+                    pour choisir votre mot de passe.
+                  </Text>
                 </View>
-
-                {channel === 'WHATSAPP' ? (
-                  <View>
-                    <AppTextField
-                      label="Numéro de téléphone"
-                      placeholder="081 234 5678 ou +243..."
-                      keyboardType="phone-pad"
-                      value={phoneInput}
-                      onChangeText={(text) => {
-                        clearError();
-                        setPhoneInput(text);
-                      }}
-                      error={error}
-                      autoFocus
-                    />
-                    <Text style={styles.hint}>
-                      Format accepté : avec ou sans indicatif (+243). Le code de sécurité à 6 chiffres vous sera envoyé par WhatsApp.
-                    </Text>
-                  </View>
-                ) : (
-                  <View>
-                    <AppTextField
-                      label="Adresse e-mail"
-                      placeholder="chauffeur@exemple.com"
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      value={emailInput}
-                      onChangeText={(text) => {
-                        clearError();
-                        setEmailInput(text);
-                      }}
-                      error={error}
-                      autoFocus
-                    />
-                    <Text style={styles.hint}>
-                      Un code de sécurité à 6 chiffres sera envoyé directement à votre boîte de réception e-mail.
-                    </Text>
-                  </View>
-                )}
-
-                <AppTextField
-                  label="Mot de passe"
-                  placeholder="8 caractères minimum"
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  value={signupPassword}
-                  onChangeText={(text) => {
-                    clearError();
-                    setSignupPassword(text);
-                  }}
-                  error={undefined}
-                />
-
-                <BigButton
-                  label="Recevoir le code"
-                  isLoading={isLoading}
-                  disabled={!isSignupValid}
-                  onPressed={handleSignup}
-                  style={styles.submitButton}
-                />
               </>
             )}
 
             {view === 'recovery' && (
               <>
-                {channel === 'WHATSAPP' ? (
-                  <AppTextField
-                    label="Numéro de téléphone"
-                    placeholder="081 234 5678 ou +243..."
-                    keyboardType="phone-pad"
-                    value={phoneInput}
-                    onChangeText={(text) => {
-                      clearError();
-                      setPhoneInput(text);
-                    }}
-                    error={error}
-                    autoFocus
-                  />
-                ) : (
-                  <AppTextField
-                    label="Adresse e-mail"
-                    placeholder="chauffeur@exemple.com"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    value={emailInput}
-                    onChangeText={(text) => {
-                      clearError();
-                      setEmailInput(text);
-                    }}
-                    error={error}
-                    autoFocus
-                  />
-                )}
+                <AppTextField
+                  label="Adresse e-mail"
+                  placeholder="chauffeur@exemple.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={emailInput}
+                  onChangeText={(text) => {
+                    clearError();
+                    setEmailInput(text);
+                  }}
+                  error={error}
+                  autoFocus
+                />
+                {notice ? (
+                  <View style={styles.noticeContainer}>
+                    <Text style={styles.noticeText}>{notice}</Text>
+                  </View>
+                ) : null}
                 <BigButton
-                  label="Recevoir le code de récupération"
+                  label="Recevoir le lien par e-mail"
                   isLoading={isLoading}
                   disabled={!isRecoveryValid}
                   onPressed={handleRecoveryRequest}
@@ -472,9 +238,7 @@ export default function LoginScreen() {
 
           <View style={styles.footerSection}>
             <Text style={styles.footerText}>
-              {view === 'login'
-                ? 'En cas de difficulté d’accès ou de compte suspendu, contactez le coordinateur de flotte de votre organisation.'
-                : 'En créant votre compte, vous confirmez votre rattachement à la flotte de votre organisation.'}
+              En cas de difficulté d’accès ou de compte suspendu, contactez le coordinateur de flotte de votre organisation.
             </Text>
           </View>
         </ScrollView>
@@ -527,33 +291,6 @@ const styles = StyleSheet.create({
     color: AppTheme.textSecondary,
     marginBottom: 12,
   },
-  modeSegmentedControl: {
-    flexDirection: 'row',
-    backgroundColor: AppTheme.subtle,
-    borderRadius: AppRadius.md,
-    padding: 4,
-    marginBottom: 20,
-  },
-  modeSegmentOption: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: AppRadius.md,
-  },
-  modeSegmentOptionActive: {
-    backgroundColor: AppTheme.card,
-    ...AppShadow.card,
-  },
-  modeSegmentText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: AppTheme.textMuted,
-  },
-  modeSegmentTextActive: {
-    color: AppTheme.primary,
-    fontWeight: '800',
-  },
   title: {
     fontSize: 26,
     fontWeight: '800',
@@ -565,64 +302,8 @@ const styles = StyleSheet.create({
     color: AppTheme.textSecondary,
     lineHeight: 20,
   },
-  channelContainer: {
-    marginTop: 18,
-  },
-  channelLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: AppTheme.text,
-    marginBottom: 8,
-  },
-  segmentedControl: {
-    flexDirection: 'row',
-    backgroundColor: AppTheme.subtle,
-    borderRadius: AppRadius.md,
-    padding: 4,
-  },
-  segmentOption: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: AppRadius.sm,
-  },
-  segmentOptionActive: {
-    backgroundColor: AppTheme.card,
-    ...AppShadow.card,
-  },
-  segmentContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: AppTheme.textMuted,
-  },
-  segmentTextActive: {
-    color: AppTheme.primary,
-    fontWeight: '800',
-  },
   formSection: {
     flex: 1,
-    marginTop: 4,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  nameField: {
-    flex: 1,
-  },
-  hint: {
-    fontSize: 13,
-    color: AppTheme.textMuted,
-    lineHeight: 18,
-    marginBottom: 16,
     marginTop: 4,
   },
   submitButton: {
@@ -647,6 +328,23 @@ const styles = StyleSheet.create({
     borderRadius: AppRadius.md,
     padding: 10,
     marginBottom: 12,
+  },
+  inviteHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 20,
+    padding: 12,
+    borderRadius: AppRadius.md,
+    borderWidth: 1,
+    borderColor: AppTheme.border,
+    backgroundColor: AppTheme.surface,
+  },
+  inviteHintText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
+    color: AppTheme.textMuted,
   },
   noticeText: {
     color: AppTheme.primary,

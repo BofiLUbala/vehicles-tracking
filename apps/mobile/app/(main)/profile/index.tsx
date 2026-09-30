@@ -87,7 +87,7 @@ export default function ProfileScreen() {
               <Phone size={16} color={AppTheme.info} />
             </View>
             <View style={styles.infoBody}>
-              <Text style={styles.infoLabel}>Téléphone WhatsApp</Text>
+              <Text style={styles.infoLabel}>Téléphone</Text>
               <Text style={styles.infoValue}>{profile?.phone || 'Non renseigné'}</Text>
             </View>
           </View>

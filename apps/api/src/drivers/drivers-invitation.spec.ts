@@ -3,6 +3,7 @@ import { DriversService } from './drivers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeEventsService } from '../tracking/realtime-events.service';
 import { SmtpEmailSender } from '../auth/senders/smtp-email.sender';
+import { hashDriverLinkToken } from './driver-link-token';
 
 describe('DriversService invitations', () => {
   const driver = {
@@ -18,10 +19,11 @@ describe('DriversService invitations', () => {
   };
   const findFirst = jest.fn();
   const create = jest.fn();
+  const update = jest.fn();
   const sendDriverInvitation = jest.fn();
   const emitDriverChanged = jest.fn();
   const service = new DriversService(
-    { driver: { findFirst, create } } as unknown as PrismaService,
+    { driver: { findFirst, create, update } } as unknown as PrismaService,
     { emitDriverChanged } as unknown as RealtimeEventsService,
     { sendDriverInvitation } as unknown as SmtpEmailSender,
   );
@@ -40,7 +42,13 @@ describe('DriversService invitations', () => {
     });
 
     expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ email: driver.email, organizationId: 'org-1' }) });
-    expect(sendDriverInvitation).toHaveBeenCalledWith(driver.email, 'Jean');
+    // Le jeton envoyé par e-mail n'est jamais stocké en clair : seul son hash SHA-256 l'est.
+    const { invitationTokenHash, invitationExpiresAt } = create.mock.calls[0][0].data;
+    const token = sendDriverInvitation.mock.calls[0][2];
+    expect(sendDriverInvitation).toHaveBeenCalledWith(driver.email, 'Jean', expect.any(String));
+    expect(invitationTokenHash).toBe(hashDriverLinkToken(token));
+    expect(invitationTokenHash).not.toBe(token);
+    expect(invitationExpiresAt.getTime()).toBeGreaterThan(Date.now());
     expect(create.mock.invocationCallOrder[0]).toBeLessThan(sendDriverInvitation.mock.invocationCallOrder[0]);
   });
 
@@ -60,7 +68,13 @@ describe('DriversService invitations', () => {
     sendDriverInvitation.mockResolvedValue(undefined);
 
     await expect(service.resendInvitation('org-1', driver.id)).resolves.toEqual({ message: 'Invitation envoyée' });
-    expect(sendDriverInvitation).toHaveBeenCalledWith(driver.email, driver.firstName);
+    // Chaque renvoi émet un nouveau lien (l'ancien jeton est remplacé).
+    const token = sendDriverInvitation.mock.calls[0][2];
+    expect(update).toHaveBeenCalledWith({
+      where: { id: driver.id },
+      data: { invitationTokenHash: hashDriverLinkToken(token), invitationExpiresAt: expect.any(Date) },
+    });
+    expect(sendDriverInvitation).toHaveBeenCalledWith(driver.email, driver.firstName, token);
     await expect(service.resendInvitation('org-1', driver.id)).rejects.toThrow(BadRequestException);
     expect(sendDriverInvitation).toHaveBeenCalledTimes(1);
   });

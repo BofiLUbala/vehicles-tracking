@@ -1,13 +1,11 @@
 import { apiClient } from './client';
 import {
+  ActivateInvitationDto,
   AuthSession,
   Driver,
+  DriverInvitation,
+  ConfirmPasswordResetDto,
   DriverLoginDto,
-  RequestOtpDto,
-  RequestPasswordResetDto,
-  ResendOtpDto,
-  VerifyOtpDto,
-  VerifyPasswordResetDto,
 } from '../types/auth.types';
 
 /**
@@ -20,28 +18,15 @@ import {
 const EMAIL_SEND_TIMEOUT_MS = 45_000;
 
 export const AuthApi = {
-  async requestOtp(payload: RequestOtpDto | string, channel?: 'WHATSAPP' | 'EMAIL'): Promise<void> {
-    const body: RequestOtpDto =
-      typeof payload === 'string'
-        ? { phone: payload, channel: channel ?? 'WHATSAPP' }
-        : payload;
-    await apiClient.post('/auth/otp/request', body, { timeout: EMAIL_SEND_TIMEOUT_MS });
+  /** Invitation associée au lien d'activation reçu par e-mail (nom du chauffeur à afficher). */
+  async getInvitation(token: string): Promise<DriverInvitation> {
+    const response = await apiClient.post<DriverInvitation>('/auth/driver/invitation', { token });
+    return response.data;
   },
 
-  async resendOtp(payload: ResendOtpDto | string, channel?: 'WHATSAPP' | 'EMAIL'): Promise<void> {
-    const body: ResendOtpDto =
-      typeof payload === 'string'
-        ? { phone: payload, channel: channel ?? 'WHATSAPP' }
-        : payload;
-    await apiClient.post('/auth/otp/resend', body, { timeout: EMAIL_SEND_TIMEOUT_MS });
-  },
-
-  async verifyOtp(dto: VerifyOtpDto): Promise<AuthSession> {
-    const response = await apiClient.post<{
-      accessToken: string;
-      refreshToken: string;
-      driver: Driver;
-    }>('/auth/otp/verify', dto);
+  /** Activation du compte depuis le lien d'invitation : le chauffeur choisit son mot de passe. */
+  async activateInvitation(dto: ActivateInvitationDto): Promise<AuthSession> {
+    const response = await apiClient.post<AuthSession>('/auth/driver/activate', dto);
     return response.data;
   },
 
@@ -55,12 +40,14 @@ export const AuthApi = {
     return response.data;
   },
 
-  async requestPasswordReset(payload: RequestPasswordResetDto): Promise<void> {
-    await apiClient.post('/auth/password-reset/request', payload, { timeout: EMAIL_SEND_TIMEOUT_MS });
+  /** Mot de passe oublié : un lien de réinitialisation est envoyé par e-mail (jamais de code). */
+  async requestPasswordReset(email: string): Promise<void> {
+    await apiClient.post('/auth/driver/password-reset/request', { email }, { timeout: EMAIL_SEND_TIMEOUT_MS });
   },
 
-  async verifyPasswordReset(payload: VerifyPasswordResetDto): Promise<{ message: string }> {
-    const response = await apiClient.post<{ message: string }>('/auth/password-reset/verify', payload);
+  /** Nouveau mot de passe depuis le lien de réinitialisation. */
+  async confirmPasswordReset(dto: ConfirmPasswordResetDto): Promise<{ message: string }> {
+    const response = await apiClient.post<{ message: string }>('/auth/driver/password-reset/confirm', dto);
     return response.data;
   },
 

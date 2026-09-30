@@ -13,7 +13,7 @@ vi.mock('../api/client', () => ({
   setForceLogoutHandler: vi.fn(),
 }));
 
-describe('AuthApi Requests (password login + OTP activation/recovery only)', () => {
+describe('AuthApi Requests (password login, e-mail links only, no codes)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -41,105 +41,51 @@ describe('AuthApi Requests (password login + OTP activation/recovery only)', () 
     expect(session.accessToken).toBe('access_123');
   });
 
-  it('sends Email SIGN_UP requestOtp payload with mode, channel, email, firstName, lastName', async () => {
+  it("reads the invitation behind the e-mail activation link", async () => {
     (apiClient.post as any).mockResolvedValueOnce({
-      data: { success: true, message: 'OTP envoyé par e-mail' },
+      data: { firstName: 'Gauthier', lastName: 'Bofi', email: 'driver@company.cd', phone: '+243989805614' },
     });
 
-    await AuthApi.requestOtp({
-      mode: 'SIGN_UP',
-      channel: 'EMAIL',
-      email: 'driver@company.cd',
-      firstName: 'Gauthier',
-      lastName: 'Bofi',
-    });
+    const invitation = await AuthApi.getInvitation('tok_abc');
 
-    expect(apiClient.post).toHaveBeenCalledWith('/auth/otp/request', {
-      mode: 'SIGN_UP',
-      channel: 'EMAIL',
-      email: 'driver@company.cd',
-      firstName: 'Gauthier',
-      lastName: 'Bofi',
-    }, EMAIL_SEND_TIMEOUT);
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/driver/invitation', { token: 'tok_abc' });
+    expect(invitation.firstName).toBe('Gauthier');
   });
 
-  it('sends Email SIGN_UP verifyOtp payload with code, password, email, name, and deviceId', async () => {
-    const mockSession = {
-      accessToken: 'access_123',
-      refreshToken: 'refresh_123',
-      driver: { id: 'd_1', firstName: 'Gauthier', lastName: 'Bofi', email: 'driver@company.cd', phone: '', status: 'ACTIVE' },
-    };
-
+  it('activates the account from the invitation link with token, password and deviceId', async () => {
     (apiClient.post as any).mockResolvedValueOnce({
-      data: mockSession,
+      data: {
+        accessToken: 'access_123',
+        refreshToken: 'refresh_123',
+        driver: { id: 'd_1', firstName: 'Gauthier', lastName: 'Bofi', email: 'driver@company.cd', phone: '', status: 'ACTIVE' },
+      },
     });
 
-    const session = await AuthApi.verifyOtp({
-      mode: 'SIGN_UP',
-      channel: 'EMAIL',
-      email: 'driver@company.cd',
-      code: '654321',
-      password: 'SignupPass123',
-      firstName: 'Gauthier',
-      lastName: 'Bofi',
-      deviceId: 'device_abc',
-    });
+    const session = await AuthApi.activateInvitation({ token: 'tok_abc', password: 'SignupPass123', deviceId: 'device_abc' });
 
-    expect(apiClient.post).toHaveBeenCalledWith('/auth/otp/verify', {
-      mode: 'SIGN_UP',
-      channel: 'EMAIL',
-      email: 'driver@company.cd',
-      code: '654321',
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/driver/activate', {
+      token: 'tok_abc',
       password: 'SignupPass123',
-      firstName: 'Gauthier',
-      lastName: 'Bofi',
       deviceId: 'device_abc',
     });
     expect(session.accessToken).toBe('access_123');
-    expect(session.driver.firstName).toBe('Gauthier');
   });
 
-  it('sends resendOtp payload with SIGN_UP mode, channel and target', async () => {
-    (apiClient.post as any).mockResolvedValueOnce({
-      data: { success: true },
-    });
-
-    await AuthApi.resendOtp({
-      mode: 'SIGN_UP',
-      channel: 'WHATSAPP',
-      phone: '+243989805614',
-    });
-
-    expect(apiClient.post).toHaveBeenCalledWith('/auth/otp/resend', {
-      mode: 'SIGN_UP',
-      channel: 'WHATSAPP',
-      phone: '+243989805614',
-    }, EMAIL_SEND_TIMEOUT);
-  });
-
-  it('sends password-reset request and verify payloads', async () => {
+  it('asks for a password-reset link by e-mail (no code), then confirms with the link token', async () => {
     (apiClient.post as any).mockResolvedValueOnce({ data: { message: 'ok' } });
 
-    await AuthApi.requestPasswordReset({ channel: 'WHATSAPP', phone: '+243989805614' });
+    await AuthApi.requestPasswordReset('driver@company.cd');
 
-    expect(apiClient.post).toHaveBeenCalledWith('/auth/password-reset/request', {
-      channel: 'WHATSAPP',
-      phone: '+243989805614',
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/driver/password-reset/request', {
+      email: 'driver@company.cd',
     }, EMAIL_SEND_TIMEOUT);
 
     (apiClient.post as any).mockResolvedValueOnce({ data: { message: 'Mot de passe réinitialisé.' } });
 
-    const res = await AuthApi.verifyPasswordReset({
-      channel: 'WHATSAPP',
-      phone: '+243989805614',
-      code: '123456',
-      newPassword: 'BrandNewPass123',
-    });
+    const res = await AuthApi.confirmPasswordReset({ token: 'tok_reset', newPassword: 'BrandNewPass123' });
 
-    expect(apiClient.post).toHaveBeenCalledWith('/auth/password-reset/verify', {
-      channel: 'WHATSAPP',
-      phone: '+243989805614',
-      code: '123456',
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/driver/password-reset/confirm', {
+      token: 'tok_reset',
       newPassword: 'BrandNewPass123',
     });
     expect(res.message).toContain('réinitialisé');

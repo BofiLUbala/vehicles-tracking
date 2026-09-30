@@ -2,13 +2,6 @@ export type RoleName = 'DRIVER' | 'ADMIN' | 'SUPER_ADMIN';
 
 export type DriverStatus = 'PENDING_VERIFICATION' | 'ACTIVE' | 'SUSPENDED' | 'UNAVAILABLE' | 'DISABLED';
 
-export type AuthMode = 'LOGIN' | 'SIGN_UP';
-
-/** Usage OTP côté mobile : activation de compte ou récupération de mot de passe uniquement. */
-export type OtpPurpose = 'signup' | 'recovery';
-
-export type AuthChannel = 'WHATSAPP' | 'EMAIL';
-
 export interface Driver {
   type?: 'driver';
   role?: RoleName;
@@ -34,25 +27,16 @@ export interface AuthSession extends AuthTokens {
   driver: Driver;
 }
 
-export interface RequestOtpDto {
-  mode?: AuthMode;
-  channel: AuthChannel;
-  phone?: string;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  deviceId?: string;
+export interface DriverInvitation {
+  firstName: string;
+  lastName: string;
+  email?: string | null;
+  phone?: string | null;
 }
 
-export interface VerifyOtpDto {
-  mode?: AuthMode;
-  channel: AuthChannel;
-  phone?: string;
-  email?: string;
-  code: string;
-  firstName?: string;
-  lastName?: string;
-  password?: string;
+export interface ActivateInvitationDto {
+  token: string;
+  password: string;
   deviceId?: string;
 }
 
@@ -63,23 +47,10 @@ export interface DriverLoginDto {
   deviceId?: string;
 }
 
-export interface RequestPasswordResetDto {
-  channel: AuthChannel;
-  phone?: string;
-  email?: string;
-}
-
-export interface VerifyPasswordResetDto extends RequestPasswordResetDto {
-  code: string;
+/** Nouveau mot de passe choisi depuis le lien « Mot de passe oublié » reçu par e-mail. */
+export interface ConfirmPasswordResetDto {
+  token: string;
   newPassword: string;
-}
-
-export interface ResendOtpDto {
-  mode?: AuthMode;
-  channel: AuthChannel;
-  phone?: string;
-  email?: string;
-  deviceId?: string;
 }
 
 export interface RefreshTokenDto {

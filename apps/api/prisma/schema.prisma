@@ -310,6 +310,12 @@ model Driver {
   passwordHash   String?
   licenseNumber  String?
   status         DriverStatus @default(ACTIVE)
+  // Invitation par lien e-mail : seul le hash SHA-256 du jeton est stocké (usage unique).
+  invitationTokenHash String?   @unique
+  invitationExpiresAt DateTime?
+  // Mot de passe oublié par lien e-mail (même principe, durée courte).
+  passwordResetTokenHash String?   @unique
+  passwordResetExpiresAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?

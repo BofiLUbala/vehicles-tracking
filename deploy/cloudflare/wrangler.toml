@@ -8,3 +8,13 @@ workers_dev = true
 [vars]
 # Caddy sur l'EC2 (voir deploy/aws/Caddyfile, bloc ADMIN_DOMAIN).
 ORIGIN = "https://admin.46-137-0-222.sslip.io"
+
+# Invitation des chauffeurs (lien d'activation reçu par e-mail, voir worker.js).
+APP_SCHEME = "trackingvehicles"
+ANDROID_PACKAGE = "com.trackingvehicles.tracking_vehicles_mobile"
+ANDROID_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.trackingvehicles.tracking_vehicles_mobile"
+# Empreintes SHA-256 des certificats qui signent l'app, séparées par des virgules : clé de signature
+# Play Console (Configuration > Intégrité de l'application) et clé EAS (`eas credentials`) pour les
+# APK internes. Vide : les liens ne s'ouvrent pas directement dans l'app, la page /activate prend
+# le relais avec son bouton « Ouvrir l'application ».
+ANDROID_SHA256_CERT_FINGERPRINTS = ""

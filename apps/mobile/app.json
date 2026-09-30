@@ -36,7 +36,26 @@
         "INTERNET",
         "RECEIVE_BOOT_COMPLETED"
       ],
-      "versionCode": 1
+      "versionCode": 1,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "track.bofigauthier3.workers.dev",
+              "pathPrefix": "/activate"
+            },
+            {
+              "scheme": "https",
+              "host": "track.bofigauthier3.workers.dev",
+              "pathPrefix": "/reset-password"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",

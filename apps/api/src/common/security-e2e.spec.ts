@@ -79,37 +79,37 @@ describe('Sécurité — bout en bout (section 18)', () => {
       await request(app.getHttpServer()).get('/api/v1/reports/missions').set('Authorization', 'Bearer not-a-real-jwt').expect(401);
     });
 
-    it("410 Gone : l'OTP n'est plus un moyen de connexion (connexion par mot de passe requise)", async () => {
-      await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({ phone: randomPhone() }).expect(410);
-      await request(app.getHttpServer())
-        .post('/api/v1/auth/otp/verify')
-        .send({ phone: randomPhone(), code: '123456' })
-        .expect(410);
+    it('410 Gone : les chauffeurs ne reçoivent plus de code (activation et récupération par lien e-mail)', async () => {
+      for (const route of ['otp/request', 'otp/verify', 'otp/resend']) {
+        await request(app.getHttpServer())
+          .post(`/api/v1/auth/${route}`)
+          .send({ mode: 'SIGN_UP', channel: 'EMAIL', email: 'chauffeur@exemple.com', code: '123456' })
+          .expect(410);
+      }
     });
   });
 
   describe('Validation des entrées — rejette les payloads malformés (400)', () => {
-    it('400 : téléphone hors format E.164 sur POST /auth/otp/request', async () => {
-      await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({ phone: '0123456789' }).expect(400);
+    it('400 : téléphone hors format E.164 sur POST /auth/driver/login', async () => {
+      await request(app.getHttpServer()).post('/api/v1/auth/driver/login').send({ phone: '0123456789', password: 'x' }).expect(400);
     });
 
     it('400 : champ requis manquant', async () => {
-      // Mode SIGN_UP sans identifiant : la validation DTO passe (champs optionnels),
-      // le service rejette l'identifiant manquant (l'OTP LOGIN répond 410, voir test dédié).
-      await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({ mode: 'SIGN_UP' }).expect(400);
+      await request(app.getHttpServer()).post('/api/v1/auth/driver/login').send({ phone: randomPhone() }).expect(400);
+      await request(app.getHttpServer()).post('/api/v1/auth/driver/activate').send({ token: 'x'.repeat(43) }).expect(400);
     });
 
     it('400 : champ non attendu rejeté (whitelist/forbidNonWhitelisted)', async () => {
       await request(app.getHttpServer())
-        .post('/api/v1/auth/otp/request')
-        .send({ phone: randomPhone(), isAdmin: true })
+        .post('/api/v1/auth/driver/password-reset/request')
+        .send({ email: 'chauffeur@exemple.com', isAdmin: true })
         .expect(400);
     });
 
-    it("400 : enum invalide (channel inconnu)", async () => {
+    it("400 : canal de récupération non autorisé (e-mail uniquement)", async () => {
       await request(app.getHttpServer())
-        .post('/api/v1/auth/otp/request')
-        .send({ phone: randomPhone(), channel: 'CARRIER_PIGEON' })
+        .post('/api/v1/auth/password-reset/request')
+        .send({ email: 'admin@exemple.com', channel: 'WHATSAPP' })
         .expect(400);
     });
   });

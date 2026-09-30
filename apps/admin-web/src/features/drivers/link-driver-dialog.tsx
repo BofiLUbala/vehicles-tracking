@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/status-badge';
-import { driverFormSchema, DRIVER_STATUSES, PHONE_REGEX, type DriverFormValues } from '@/features/drivers/schemas';
+import { driverFormSchema, inviteDriverSchema, DRIVER_STATUSES, PHONE_REGEX, type DriverFormValues } from '@/features/drivers/schemas';
 import type { DriverStatus } from '@/features/drivers/types';
 import { driverStatusToLabel } from '@/features/drivers/driver-status';
 import type { DriverDto, LinkableDriverDto, LinkDriverInput, InviteDriverInput, ProfileCompleteness } from '@/features/drivers/types';
@@ -168,7 +168,7 @@ function InviteForm({ onSubmit, onBack, submitting, existingDrivers }: { onSubmi
   const [otherDialCode, setOtherDialCode] = useState('');
   const [localNumber, setLocalNumber] = useState('');
   const form = useForm<InviteDriverInput>({
-    resolver: zodResolver(driverFormSchema),
+    resolver: zodResolver(inviteDriverSchema),
     defaultValues: {
       firstName: '',
       lastName: '',
@@ -209,7 +209,7 @@ function InviteForm({ onSubmit, onBack, submitting, existingDrivers }: { onSubmi
       <div className="p-3 rounded-lg border border-border bg-muted/30">
         <h4 className="font-medium text-foreground mb-2">Invitation (nouveau compte mobile)</h4>
         <p className="text-sm text-muted-foreground">
-          Un e-mail d'invitation sera envoyé si une adresse est renseignée. Le chauffeur demandera ensuite son code d'activation dans l'application mobile.
+          Le chauffeur reçoit par e-mail un lien « Activer mon compte ». En l'ouvrant sur son téléphone, l'application mobile s'ouvre et il choisit son mot de passe. Le lien est valable 7 jours.
         </p>
       </div>
 
@@ -282,8 +282,17 @@ function InviteForm({ onSubmit, onBack, submitting, existingDrivers }: { onSubmi
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="email">E-mail (optionnel)</Label>
-          <Input id="email" type="email" placeholder="chauffeur@exemple.com" {...form.register('email')} />
+          <Label htmlFor="email">E-mail</Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="chauffeur@exemple.com"
+            aria-invalid={Boolean(form.formState.errors.email)}
+            {...form.register('email')}
+          />
+          {form.formState.errors.email ? (
+            <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
+          ) : <p className="text-xs text-muted-foreground">Reçoit le lien d'activation.</p>}
         </div>
         <div className="space-y-1">
           <Label htmlFor="licenseNumber">Numéro de permis</Label>
@@ -375,7 +384,7 @@ export function DriverDialog({
   }
 
   async function handleInviteSubmit(values: InviteDriverInput) {
-    await onCreate({ ...values, email: values.email?.trim() || undefined, licenseNumber: values.licenseNumber || undefined });
+    await onCreate({ ...values, email: values.email?.trim(), licenseNumber: values.licenseNumber || undefined });
     setMode('select');
   }
 

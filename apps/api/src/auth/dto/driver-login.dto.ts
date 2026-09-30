@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString, Matches } from 'class-validator';
-import { PHONE_REGEX } from './request-otp.dto';
+import { PHONE_REGEX } from './phone';
 
 /**
  * Connexion chauffeur par identifiant + mot de passe (l'OTP ne sert plus à la connexion).
