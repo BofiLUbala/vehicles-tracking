@@ -39,9 +39,19 @@ export class VehiclesService {
       select: { id: true, vehicleId: true, status: true },
     });
     const missionByVehicle = new Map(activeMissions.map((m) => [m.vehicleId, { id: m.id, status: m.status }]));
+    // Chauffeur actuellement affecté (affectation non clôturée) : la colonne « Chauffeur affecté » de
+    // l'admin l'attendait mais ne le recevait jamais, et affichait « — » pour tous les véhicules.
+    const assignments = await this.prisma.driverVehicleAssignment.findMany({
+      where: { vehicleId: { in: vehicleIds }, endedAt: null },
+      orderBy: { startedAt: 'desc' },
+      select: { vehicleId: true, driver: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    const driverByVehicle = new Map<string, { id: string; firstName: string; lastName: string }>();
+    for (const a of assignments) if (!driverByVehicle.has(a.vehicleId)) driverByVehicle.set(a.vehicleId, a.driver);
     return vehicles.map((vehicle) => ({
       ...vehicle,
       activeMission: missionByVehicle.get(vehicle.id) ?? null,
+      currentDriver: driverByVehicle.get(vehicle.id) ?? null,
     }));
   }
 

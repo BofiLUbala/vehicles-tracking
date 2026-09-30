@@ -56,8 +56,10 @@ export function VehiclesTable({ vehicles, selectedVehicleId, onEdit, onAssignDri
                 {[vehicle.brand, vehicle.model].filter(Boolean).join(' ') || '—'}
               </td>
               <td className="px-4 py-3">
-                <StatusBadge tone={vehicleStatusTone(vehicle.status)} dot>
-                  {vehicleStatusToLabel(vehicle.status)}
+                {/* Un véhicule avec une mission en cours est « En mission », même si son statut
+                    enregistré (modifiable dans le formulaire) est resté « Disponible ». */}
+                <StatusBadge tone={vehicleStatusTone(vehicle.activeMission ? 'ON_MISSION' : vehicle.status)} dot>
+                  {vehicleStatusToLabel(vehicle.activeMission ? 'ON_MISSION' : vehicle.status)}
                 </StatusBadge>
               </td>
               <td className="px-4 py-3">

@@ -113,7 +113,8 @@ export function MissionsPageClient() {
           </CardHeader>
           <CardContent>
             <MissionForm
-              onSubmit={(values) => createMutation.mutateAsync(values)}
+              // L'échec (ex. 409 : chauffeur déjà en mission) est affiché par onError ; on évite ici un rejet non géré.
+              onSubmit={(values) => createMutation.mutateAsync(values).catch(() => undefined)}
               onCancel={() => setShowCreateForm(false)}
               submitting={createMutation.isPending}
             />

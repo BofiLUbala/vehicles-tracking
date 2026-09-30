@@ -26,6 +26,8 @@ export interface VehicleDto {
   updatedAt: string;
   /** Optionnel : le backend peut inclure le chauffeur actuellement affecté. */
   currentDriver?: VehicleDriverRef | null;
+  /** Mission en cours (assignée, démarrée ou en cours) sur ce véhicule, s'il y en a une. */
+  activeMission?: { id: string; status: string } | null;
 }
 
 export interface VehicleFilters {
