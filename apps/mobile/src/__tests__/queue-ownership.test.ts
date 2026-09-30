@@ -6,6 +6,7 @@ import { ValidationQueueRepository } from '../database/validation-queue.reposito
 import { FuelQueueRepository } from '../database/fuel-queue.repository';
 import { MissionsCacheRepository } from '../database/missions-cache.repository';
 import { createRealSqlite } from './helpers/real-sqlite';
+import { PositionGate } from '../services/position-gate';
 
 /**
  * RÉGRESSION D'INTÉGRITÉ (constatée en conditions réelles) : 5 points GPS du chauffeur A sont restés en
@@ -15,17 +16,21 @@ import { createRealSqlite } from './helpers/real-sqlite';
 describe('Offline queue ownership (real SQLite)', () => {
   let db: ReturnType<typeof createRealSqlite>;
 
+  // Positions espacées de 5 s, comme un vrai suivi (la file écarte les points quasi simultanés).
+  let clock = Date.parse('2026-09-29T10:00:00.000Z');
   const gps = (over: Record<string, unknown> = {}) => ({
     vehicleId: 'veh-A',
     missionId: 'mis-A',
     latitude: -4.32,
     longitude: 15.31,
+    recordedAt: new Date((clock += 5000)).toISOString(),
     ...over,
   });
   const count = (table: string, where = '1=1') =>
     (db.getFirstSync<{ c: number }>(`SELECT COUNT(*) AS c FROM ${table} WHERE ${where}`)?.c ?? -1) as number;
 
   beforeEach(() => {
+    PositionGate.reset();
     db = createRealSqlite();
     setDatabaseInstanceForTest(db as never);
     initDatabase(db as never);

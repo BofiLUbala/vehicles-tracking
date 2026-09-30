@@ -223,6 +223,25 @@ describe('TrackingService (intégration DB réelle)', () => {
     expect(count).toBe(2);
   });
 
+  it("pas d'alerte pour deux positions d'un camion à 45 km/h relevées à 0,35 s d'écart (bruit GPS)", async () => {
+    const { driver, vehicle } = await setupDriverAndVehicle();
+    const t = Date.now() - 5_000;
+    // Cas réel constaté (émulateur Android) : deux sources GPS, 19 m d'écart en 0,35 s => 195 km/h « implicites ».
+    await tracking.ingestSingle(driver.id, DEMO_ORG_ID, positionPayload({
+      vehicleId: vehicle.id, latitude: BASE_LAT, longitude: BASE_LNG, accuracy: 5, recordedAt: new Date(t).toISOString(),
+    }));
+    await tracking.ingestSingle(driver.id, DEMO_ORG_ID, positionPayload({
+      vehicleId: vehicle.id, latitude: BASE_LAT + 0.00017, longitude: BASE_LNG, accuracy: 5, recordedAt: new Date(t + 350).toISOString(),
+    }));
+    // 10 s plus tard, 125 m plus loin : 45 km/h, plausible.
+    await tracking.ingestSingle(driver.id, DEMO_ORG_ID, positionPayload({
+      vehicleId: vehicle.id, latitude: BASE_LAT + 0.00129, longitude: BASE_LNG, accuracy: 5, recordedAt: new Date(t + 10_350).toISOString(),
+    }));
+
+    expect(await prisma.alert.count({ where: { vehicleId: vehicle.id, type: 'SPEEDING' } })).toBe(0);
+    expect(await prisma.gpsPosition.count({ where: { vehicleId: vehicle.id } })).toBe(3);
+  });
+
   it('crée une alerte MOCK_GPS avec un score explicable de 40 (barème section 15)', async () => {
     const { driver, vehicle } = await setupDriverAndVehicle();
 

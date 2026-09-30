@@ -16,6 +16,8 @@ const DEFAULT_MAX_GPS_ACCURACY_METERS = 100;
 const MOVING_SPEED_THRESHOLD_KMH = 3;
 /** Fenêtre (minutes) pendant laquelle une alerte IMPOSSIBLE_SPEED/MOCK_GPS récente rend un véhicule SUSPICIOUS sur /live. */
 const SUSPICIOUS_ALERT_WINDOW_MINUTES = 30;
+/** En dessous, l'écart entre deux positions ne permet pas de juger une vitesse (bruit GPS dominant). */
+const MIN_IMPLIED_SPEED_INTERVAL_SECONDS = 3;
 
 export type PositionIngestResultStatus = 'created' | 'duplicate' | 'rejected';
 
@@ -229,11 +231,16 @@ export class TrackingService {
     }
 
     // Vitesse implicite entre cette position et la précédente position connue du véhicule.
+    // Deux garde-fous contre les faux « sauts impossibles » : entre deux points trop rapprochés dans
+    // le temps, l'imprécision GPS domine (5 m en 0,2 s = 90 km/h) ; et la distance jugée est celle
+    // qui dépasse l'incertitude cumulée des deux mesures.
     if (previous) {
       const distanceMeters = haversineDistanceMeters(previous.latitude, previous.longitude, dto.latitude, dto.longitude);
       const deltaSeconds = (recordedAt.getTime() - previous.recordedAt.getTime()) / 1000;
-      if (deltaSeconds > 0) {
-        const impliedSpeedKmh = (distanceMeters / 1000) / (deltaSeconds / 3600);
+      const uncertaintyMeters = (previous.accuracy ?? 0) + (dto.accuracy ?? 0);
+      const beyondUncertaintyMeters = Math.max(0, distanceMeters - uncertaintyMeters);
+      if (deltaSeconds >= MIN_IMPLIED_SPEED_INTERVAL_SECONDS) {
+        const impliedSpeedKmh = (beyondUncertaintyMeters / 1000) / (deltaSeconds / 3600);
         const maxSpeed = this.maxPlausibleSpeedKmh();
         if (impliedSpeedKmh > maxSpeed) {
           const { score, breakdown } = buildAlertScore([

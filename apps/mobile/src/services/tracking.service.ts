@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import { BACKGROUND_LOCATION_TASK, ACTIVE_TRACKING_KEY } from './background-location.task';
 import { GpsQueueRepository } from '../database/gps-queue.repository';
+import { PositionGate } from './position-gate';
 import { ActiveOwner } from '../database/active-owner';
 
 export interface GpsCoordinates {
@@ -114,6 +115,7 @@ class TrackingServiceClass {
 
     // Stop existing listeners if any
     await this.stopTrackingOnly();
+    PositionGate.reset();
 
     // Start foreground position watcher
     try {

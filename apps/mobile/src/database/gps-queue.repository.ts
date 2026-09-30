@@ -3,6 +3,7 @@ import { ActiveOwner } from './active-owner';
 import { PendingGpsPositionRow } from '../types/sync.types';
 import { GpsPositionPayload } from '../types/tracking.types';
 import { createClientEventId } from '../utils/client-event-id';
+import { PositionGate } from '../services/position-gate';
 
 export interface EnqueueGpsParams {
   clientEventId?: string;
@@ -39,9 +40,11 @@ export const GpsQueueRepository = {
     if (!owner) return;
     // Un suivi démarré par le chauffeur A qui survit à sa déconnexion ne doit jamais alimenter la file de B.
     if (params.driverId && params.driverId !== owner) return;
+    const recordedAt = params.recordedAt || new Date().toISOString();
+    // Trois sources GPS alimentent cette file : doublons et points quasi simultanés sont écartés ici.
+    if (!PositionGate.accept(recordedAt)) return;
     const db = getDatabase();
     const clientEventId = params.clientEventId || createClientEventId();
-    const recordedAt = params.recordedAt || new Date().toISOString();
     const createdAtDevice = new Date().toISOString();
 
     db.runSync(
