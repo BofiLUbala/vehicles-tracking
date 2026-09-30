@@ -8,6 +8,7 @@ export interface GpsPositionPayload {
   longitude: number;
   accuracy?: number | null;
   altitude?: number | null;
+  /** Vitesse en m/s (expo-location) ; convertie en km/h à l'envoi vers l'API (tracking.api.ts). */
   speed?: number | null;
   heading?: number | null;
   isMocked: boolean;
