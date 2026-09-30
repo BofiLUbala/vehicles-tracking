@@ -17,6 +17,6 @@ ANDROID_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.tracki
 # Play Console (Configuration > Intégrité de l'application) et clé EAS (`eas credentials`) pour les
 # APK internes. Vide : les liens ne s'ouvrent pas directement dans l'app, la page /activate prend
 # le relais avec son bouton « Ouvrir l'application ».
-# Clé EAS (keystore « Build Credentials 9vdftk0vTr », APK hors Play Store).
-# À compléter avec la clé de signature Play Console (certificat de la clé de signature d'application).
-ANDROID_SHA256_CERT_FINGERPRINTS = "D2:0B:29:3C:19:B1:F2:C5:83:89:F3:F8:F5:75:D7:70:F7:3E:52:21:11:31:49:DF:B0:F8:A4:0E:9F:BE:2E:D5"
+# 1) Clé de signature d'application Play Console (« Classical key », apps installées depuis le Play Store).
+# 2) Clé EAS (keystore « Build Credentials 9vdftk0vTr », APK installés hors Play Store).
+ANDROID_SHA256_CERT_FINGERPRINTS = "0F:40:A9:77:92:28:CF:CA:72:61:66:C2:C8:9C:C2:17:C7:AA:63:85:B6:A7:C5:5E:02:0C:6B:4F:70:57:9F:E3,D2:0B:29:3C:19:B1:F2:C5:83:89:F3:F8:F5:75:D7:70:F7:3E:52:21:11:31:49:DF:B0:F8:A4:0E:9F:BE:2E:D5"
