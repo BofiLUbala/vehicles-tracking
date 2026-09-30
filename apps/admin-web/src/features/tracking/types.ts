@@ -87,6 +87,41 @@ export interface MissionTracePosition {
   recordedAt: string;
 }
 
+/** Réponse de `GET /tracking/vehicles/:id/trace/snapped`. */
+export interface VehicleRoadTrace {
+  vehicleId: string;
+  missionId: string | null;
+  /** Début de la fenêtre (sans mission en cours) ; `null` quand la trace est celle de la mission. */
+  since: string | null;
+  /** `tomtom-snap-to-roads` : recalée sur les routes ; `gps` : positions brutes (repli). */
+  source: 'tomtom-snap-to-roads' | 'gps';
+  points: { latitude: number; longitude: number }[];
+  inputPoints: number;
+  lastPositionAt: string | null;
+  /** Arrêts détectés sur les positions brutes (lieu, heure, durée ; `ongoing` = toujours arrêté). */
+  stops: TraceStop[];
+  stats: { maxSpeedKmh: number | null; avgMovingSpeedKmh: number | null; stoppedSeconds: number };
+  /** Positions brutes échantillonnées : vitesse / heure / cap au survol de la trace. */
+  samples: TraceSample[];
+}
+
+export interface TraceStop {
+  latitude: number;
+  longitude: number;
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number;
+  ongoing: boolean;
+}
+
+export interface TraceSample {
+  latitude: number;
+  longitude: number;
+  speedKmh: number | null;
+  heading: number | null;
+  recordedAt: string;
+}
+
 export interface MissionTraceResponse {
   missionId: string;
   vehicleId: string;

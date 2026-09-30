@@ -7,10 +7,11 @@ export const metadata = {
 export default function TrackingPage() {
   return (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 px-6 pb-3 pt-5">
-        <h1 className="text-2xl font-bold tracking-tight">Suivi des véhicules en temps réel</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Visualisez la position de vos véhicules et l’avancement de leurs missions.
+      {/* En-tête sur une ligne : la hauteur est réservée à la carte. */}
+      <div className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 pb-2 pt-3">
+        <h1 className="text-lg font-bold tracking-tight">Suivi des véhicules en temps réel</h1>
+        <p className="text-sm text-muted-foreground">
+          Position de vos véhicules et avancement de leurs missions.
         </p>
       </div>
       <div className="min-h-0 flex-1 px-3 pb-3">

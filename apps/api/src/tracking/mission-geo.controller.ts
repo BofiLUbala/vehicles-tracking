@@ -26,6 +26,15 @@ export class MissionGeoController {
     return this.geo.snappedTraceForOrganization(user.organizationId!, id);
   }
 
+  @Roles(RoleName.ADMIN, RoleName.SUPER_ADMIN)
+  @Get('tracking/vehicles/:id/trace/snapped')
+  @ApiOperation({
+    summary: 'Trace d’un véhicule (mission en cours ou 12 dernières heures) recalée sur les routes réelles — repli sur le GPS brut si TomTom est indisponible',
+  })
+  snappedVehicleTrace(@CurrentUser() user: AuthenticatedPrincipal, @Param('id') id: string) {
+    return this.geo.snappedVehicleTraceForOrganization(user.organizationId!, id);
+  }
+
   @Roles(RoleName.DRIVER)
   @Get('mobile/missions/:id/planned-route')
   @ApiOperation({ summary: "Itinéraire planifié d'une mission du chauffeur connecté" })

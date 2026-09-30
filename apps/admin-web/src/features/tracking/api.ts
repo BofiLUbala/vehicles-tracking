@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api-client';
-import type { LiveVehicle, LiveVehicleDto, MissionTraceResponse, TraceGeoJSON } from '@/features/tracking/types';
+import type { LiveVehicle, LiveVehicleDto, MissionTraceResponse, TraceGeoJSON, VehicleRoadTrace } from '@/features/tracking/types';
 
 function toLiveVehicle(dto: LiveVehicleDto): LiveVehicle {
   return {
@@ -24,6 +24,15 @@ export async function fetchLiveVehicles(): Promise<LiveVehicle[]> {
 
 export async function fetchVehicleTrace(vehicleId: string): Promise<TraceGeoJSON> {
   const res = await apiClient.get<TraceGeoJSON>(`/tracking/vehicles/${vehicleId}/trace`);
+  return res.data;
+}
+
+/**
+ * Trace d'un véhicule (mission en cours ou 12 dernières heures) recalée sur les routes réelles par
+ * TomTom Snap to Roads ; le backend renvoie la trace GPS brute si le recalage est indisponible.
+ */
+export async function fetchVehicleRoadTrace(vehicleId: string): Promise<VehicleRoadTrace> {
+  const res = await apiClient.get<VehicleRoadTrace>(`/tracking/vehicles/${vehicleId}/trace/snapped`);
   return res.data;
 }
 

@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { EyeOff, Layers } from 'lucide-react';
 import maplibregl, { Map as MapLibreMap, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { statusToColor, statusToLabel } from '@/features/tracking/status';
@@ -9,6 +11,9 @@ import { VehiclePanel } from '@/features/tracking/vehicle-panel';
 import { ConnectionStatus } from '@/components/connection-status';
 import { EmptyState } from '@/components/empty-state';
 import type { LiveVehicle, MissionTraceResponse } from '@/features/tracking/types';
+import { fetchVehicleRoadTrace } from '@/features/tracking/api';
+import type { TraceSample, TraceStop } from '@/features/tracking/types';
+import { compassLabel, formatClock, formatStopDuration, nearestSample, stopDurationSeconds } from '@/features/tracking/trace-format';
 import { RegionSelector } from '@/features/geo/region-selector';
 import { EMPTY_SELECTION, resolveTarget, selectionPath, type RegionSelection } from '@/features/geo/selection';
 import { presetFor, type MapViewMode } from '@/features/geo/view-mode';
@@ -26,12 +31,126 @@ import {
 } from '@/features/geo/map-style';
 import { cn } from '@/lib/utils';
 
-const TRACE_SOURCE_ID = 'mission-trace';
-const TRACE_LAYER_ID = 'mission-trace-line';
+const TRACE_SOURCE_ID = 'vehicle-trace';
+const TRACE_LAYER_ID = 'vehicle-trace-line';
+const TRACE_CASING_LAYER_ID = 'vehicle-trace-casing';
+const TRACE_ARROW_LAYER_ID = 'vehicle-trace-arrows';
+const TRACE_ARROW_IMAGE = 'vehicle-trace-arrow';
+const STOP_COLOR = '#F59E0B';
 const STEP_SOURCE_ID = 'mission-steps';
 const STEP_LAYER_ID = 'mission-steps-layer';
 const DEFAULT_CENTER: [number, number] = [23.66, -2.88];
-const TRACE_COLOR = '#1479FF';
+// Vert « En mouvement » de la légende, sur un liseré blanc pour rester lisible sur tous les fonds.
+const TRACE_COLOR = '#18A957';
+const TRACE_CASING_COLOR = '#FFFFFF';
+/** Rafraîchissement de la trace recalée ; entre deux, les positions live prolongent la ligne. */
+const TRACE_REFRESH_MS = 15_000;
+/** Préférence de l'utilisateur : panneaux de la carte affichés ou masqués (navigateur uniquement). */
+const CONTROLS_STORAGE_KEY = 'tracking.mapControlsVisible';
+
+function removeTrace(map: MapLibreMap) {
+  for (const id of [TRACE_ARROW_LAYER_ID, TRACE_LAYER_ID, TRACE_CASING_LAYER_ID]) if (map.getLayer(id)) map.removeLayer(id);
+  if (map.getSource(TRACE_SOURCE_ID)) map.removeSource(TRACE_SOURCE_ID);
+}
+
+/**
+ * Pointe de flèche blanche cerclée de vert foncé, orientée vers la droite : MapLibre la tourne dans
+ * le sens de la ligne (`symbol-placement: line`), c'est-à-dire dans le sens de marche du véhicule.
+ * Le contour sombre la garde visible sur la ligne verte comme sur son liseré blanc.
+ */
+function ensureArrowImage(map: MapLibreMap) {
+  if (map.hasImage(TRACE_ARROW_IMAGE)) return;
+  const size = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(8, 6);
+  ctx.lineTo(26, 16);
+  ctx.lineTo(8, 26);
+  ctx.lineTo(12, 16);
+  ctx.closePath();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.strokeStyle = '#0E5A2E';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fill();
+  const { data } = ctx.getImageData(0, 0, size, size);
+  map.addImage(TRACE_ARROW_IMAGE, { width: size, height: size, data: new Uint8Array(data.buffer) }, { pixelRatio: 2 });
+}
+
+/** Pastille d'un arrêt sur la carte : durée visible d'emblée, détails au clic. */
+function stopMarkerElement(stop: TraceStop): HTMLElement {
+  const el = document.createElement('button');
+  el.type = 'button';
+  const duration = formatStopDuration(stopDurationSeconds(stop));
+  el.setAttribute('aria-label', stop.ongoing ? `À l'arrêt depuis ${duration}` : `Arrêt de ${duration}`);
+  el.style.cssText =
+    'display:flex;align-items:center;gap:4px;padding:2px 7px 2px 5px;border-radius:999px;cursor:pointer;' +
+    `background:${STOP_COLOR};color:#fff;font:600 11px/16px system-ui,sans-serif;white-space:nowrap;` +
+    'border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);';
+  el.textContent = `${stop.ongoing ? '⏸ depuis ' : '⏸ '}${duration}`;
+  return el;
+}
+
+function stopPopupHtml(stop: TraceStop): string {
+  const duration = formatStopDuration(stopDurationSeconds(stop));
+  const when = stop.ongoing
+    ? `À l'arrêt depuis ${formatClock(stop.startedAt)}`
+    : `De ${formatClock(stop.startedAt)} à ${formatClock(stop.endedAt)}`;
+  return `<div style="font:12px/1.4 system-ui,sans-serif"><strong>${stop.ongoing ? 'Arrêt en cours' : 'Arrêt'} · ${duration}</strong><br>${when}</div>`;
+}
+
+function sampleTooltipHtml(sample: TraceSample): string {
+  const speed = sample.speedKmh != null ? `${sample.speedKmh} km/h` : 'vitesse inconnue';
+  const direction = compassLabel(sample.heading);
+  return `<div style="font:12px/1.4 system-ui,sans-serif"><strong>${speed}</strong>${direction ? ` · vers ${direction}` : ''}<br>${formatClock(sample.recordedAt)}</div>`;
+}
+
+/**
+ * Bouton « Plein écran » (même icône que MapLibre) piloté par l'application. Le contrôle natif
+ * `FullscreenControl` dépend de l'API Fullscreen du navigateur, refusée dans certains contextes
+ * (vue intégrée, iframe, politique du navigateur) : le bouton ne faisait alors rien.
+ */
+class ExpandControl implements maplibregl.IControl {
+  private container: HTMLDivElement | null = null;
+  private button: HTMLButtonElement | null = null;
+
+  constructor(private readonly onToggle: () => void) {}
+
+  onAdd(): HTMLElement {
+    this.container = document.createElement('div');
+    this.container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+    this.button = document.createElement('button');
+    this.button.type = 'button';
+    const icon = document.createElement('span');
+    icon.className = 'maplibregl-ctrl-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    this.button.appendChild(icon);
+    this.button.addEventListener('click', () => this.onToggle());
+    this.container.appendChild(this.button);
+    this.setExpanded(false);
+    return this.container;
+  }
+
+  onRemove() {
+    this.container?.remove();
+    this.container = null;
+    this.button = null;
+  }
+
+  setExpanded(expanded: boolean) {
+    if (!this.button) return;
+    const label = expanded ? 'Quitter le plein écran' : 'Plein écran';
+    this.button.className = expanded ? 'maplibregl-ctrl-shrink' : 'maplibregl-ctrl-fullscreen';
+    this.button.title = label;
+    this.button.setAttribute('aria-label', label);
+    this.button.setAttribute('aria-pressed', String(expanded));
+  }
+}
 
 interface TrackingMapProps {
   vehicles: LiveVehicle[];
@@ -41,11 +160,23 @@ interface TrackingMapProps {
 }
 
 /** Centre de contrôle temps réel : marqueurs de flotte + tracé mission + panneau véhicule sélectionné. */
-export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
+export function TrackingMap({ vehicles, connected }: TrackingMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Bloc carte + panneau véhicule : c'est lui qui passe en plein écran, surcouches comprises.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const expandControlRef = useRef<ExpandControl | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  // `true` quand le navigateur a accepté le vrai plein écran (sinon : plein écran CSS de la fenêtre).
+  const nativeFullscreenRef = useRef(false);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Map<string, Marker>>(new Map());
+  // Trace recalée sur les routes (dernier chargement) + positions live reçues depuis.
   const tracePointsRef = useRef<{ latitude: number; longitude: number }[]>([]);
+  const liveTailRef = useRef<{ latitude: number; longitude: number }[]>([]);
+  const stopMarkersRef = useRef<Marker[]>([]);
+  // Échantillons de la trace affichée : vitesse / heure / cap au survol de la ligne.
+  const samplesRef = useRef<TraceSample[]>([]);
+  const hoverPopupRef = useRef<maplibregl.Popup | null>(null);
   const mapReadyRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
@@ -53,7 +184,31 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
   const [missionTrace, setMissionTrace] = useState<MissionTraceResponse | null>(null);
   const [region, setRegion] = useState<RegionSelection>(EMPTY_SELECTION);
   const [viewMode, setViewMode] = useState<MapViewMode>('auto');
-  const [regionPanelOpen, setRegionPanelOpen] = useState(true);
+  // Replié par défaut : ouvert, le sélecteur de région masquait près de la moitié de la carte.
+  const [regionPanelOpen, setRegionPanelOpen] = useState(false);
+  // Région, légende, fond et trafic : masquables d'un geste pour voir toute la carte.
+  const [controlsVisible, setControlsVisible] = useState(true);
+
+  // Lecture après montage : `localStorage` n'existe pas au rendu serveur et peut être bloqué.
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(CONTROLS_STORAGE_KEY) === 'false') setControlsVisible(false);
+    } catch {
+      // stockage indisponible : panneaux affichés par défaut
+    }
+  }, []);
+
+  const toggleControls = () => {
+    setControlsVisible((visible) => {
+      const next = !visible;
+      try {
+        window.localStorage.setItem(CONTROLS_STORAGE_KEY, String(next));
+      } catch {
+        // préférence non mémorisée, sans conséquence
+      }
+      return next;
+    });
+  };
   const [mapError, setMapError] = useState<string | null>(null);
   const [trafficOn, setTrafficOn] = useState(false);
   const [baseStyle, setBaseStyle] = useState<MapBaseStyle>('street');
@@ -74,10 +229,10 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
     const map = mapRef.current;
     if (!map || !mapReadyRef.current) return;
 
-    if (map.getLayer(TRACE_LAYER_ID)) map.removeLayer(TRACE_LAYER_ID);
-    if (map.getSource(TRACE_SOURCE_ID)) map.removeSource(TRACE_SOURCE_ID);
-
-    if (points.length < 2) return;
+    if (points.length < 2) {
+      removeTrace(map);
+      return;
+    }
 
     const geojson: GeoJSON.Feature = {
       type: 'Feature',
@@ -88,13 +243,42 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
       properties: {},
     };
 
+    // Mise à jour en place à chaque position live : pas de suppression/recréation de couche.
+    const source = map.getSource(TRACE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(geojson);
+      return;
+    }
+    ensureArrowImage(map);
     map.addSource(TRACE_SOURCE_ID, { type: 'geojson', data: geojson });
+    map.addLayer({
+      id: TRACE_CASING_LAYER_ID,
+      type: 'line',
+      source: TRACE_SOURCE_ID,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': TRACE_CASING_COLOR, 'line-width': 9, 'line-opacity': 0.95 },
+    });
     map.addLayer({
       id: TRACE_LAYER_ID,
       type: 'line',
       source: TRACE_SOURCE_ID,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': TRACE_COLOR, 'line-width': 4, 'line-opacity': 0.9 },
+      paint: { 'line-color': TRACE_COLOR, 'line-width': 5 },
+    });
+    // Sens de marche : chevrons répétés le long de la ligne, orientés du départ vers la position actuelle.
+    map.addLayer({
+      id: TRACE_ARROW_LAYER_ID,
+      type: 'symbol',
+      source: TRACE_SOURCE_ID,
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': 70,
+        'icon-image': TRACE_ARROW_IMAGE,
+        'icon-size': 1,
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-rotation-alignment': 'map',
+      },
     });
   }, []);
 
@@ -131,22 +315,57 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   void drawStepMarkers;
 
-  const handleMissionTraceLoaded = useCallback(
-    (trace: MissionTraceResponse) => {
-      setMissionTrace(trace);
-      tracePointsRef.current = trace.positions;
-      if (traceVisible) drawTrace(tracePointsRef.current);
-    },
-    [traceVisible, drawTrace],
-  );
+  // Statistiques de mission du panneau (distance, durée) ; le tracé vient de `roadTraceQuery`.
+  const handleMissionTraceLoaded = useCallback((trace: MissionTraceResponse) => {
+    setMissionTrace(trace);
+  }, []);
 
-  const handleLivePoint = useCallback(
-    (point: { latitude: number; longitude: number }) => {
-      tracePointsRef.current = [...tracePointsRef.current, point];
-      if (traceVisible) drawTrace(tracePointsRef.current);
-    },
-    [traceVisible, drawTrace],
-  );
+  // Trace du véhicule sélectionné recalée sur les routes réelles (mission en cours ou dernières
+  // heures), rechargée périodiquement ; les positions live la prolongent entre deux chargements.
+  const roadTraceQuery = useQuery({
+    queryKey: ['tracking', 'vehicles', selectedVehicleId, 'trace', 'snapped'],
+    queryFn: () => fetchVehicleRoadTrace(selectedVehicleId!),
+    enabled: !!selectedVehicleId && traceVisible,
+    refetchInterval: TRACE_REFRESH_MS,
+  });
+  const roadTrace = roadTraceQuery.data?.vehicleId === selectedVehicleId ? roadTraceQuery.data : undefined;
+
+  useEffect(() => {
+    if (!roadTrace) return;
+    tracePointsRef.current = roadTrace.points;
+    liveTailRef.current = [];
+    samplesRef.current = roadTrace.samples ?? [];
+    if (traceVisible) drawTrace(tracePointsRef.current);
+  }, [roadTrace, traceVisible, drawTrace]);
+
+  // Arrêts sur la trace : pastille orange avec la durée, détails (heures) au clic.
+  useEffect(() => {
+    for (const marker of stopMarkersRef.current) marker.remove();
+    stopMarkersRef.current = [];
+    const map = mapRef.current;
+    if (!map || !mapReady || !traceVisible || !roadTrace) return;
+    stopMarkersRef.current = (roadTrace.stops ?? []).map((stop) =>
+      new maplibregl.Marker({ element: stopMarkerElement(stop), anchor: 'bottom', offset: [0, -10] })
+        .setLngLat([stop.longitude, stop.latitude])
+        .setPopup(new maplibregl.Popup({ offset: 18, closeButton: false }).setHTML(stopPopupHtml(stop)))
+        .addTo(map),
+    );
+  }, [roadTrace, traceVisible, mapReady]);
+
+  // Chaque nouvelle position du véhicule suivi prolonge la trace sans attendre le rechargement.
+  const selectedPosition = selectedVehicle?.position;
+  useEffect(() => {
+    if (!selectedPosition || !traceVisible || !roadTrace) return;
+    const at = selectedVehicle?.lastUpdateAt;
+    if (roadTrace.lastPositionAt && at && at <= roadTrace.lastPositionAt) return;
+    const point = { latitude: selectedPosition.lat, longitude: selectedPosition.lng };
+    const tail = liveTailRef.current;
+    const last = tail[tail.length - 1];
+    if (last && last.latitude === point.latitude && last.longitude === point.longitude) return;
+    liveTailRef.current = [...tail, point];
+    drawTrace([...tracePointsRef.current, ...liveTailRef.current]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPosition?.lat, selectedPosition?.lng]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -157,6 +376,9 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
       zoom: 3.4,
     });
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    const expandControl = new ExpandControl(() => setExpanded((value) => !value));
+    expandControlRef.current = expandControl;
+    map.addControl(expandControl, 'top-right');
     const markReady = () => {
       // `styledata` se déclenche plusieurs fois par style : n'incrémenter l'epoch qu'une fois,
       // au passage « pas prêt -> prêt », sinon les effets de réinstallation boucleraient.
@@ -166,6 +388,29 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
       setStyleEpoch((e) => e + 1);
     };
     map.on('styledata', markReady);
+    // Survol de la trace verte : vitesse, direction et heure au point le plus proche.
+    map.on('mousemove', (e) => {
+      const onTrace =
+        map.getLayer(TRACE_LAYER_ID) &&
+        map.queryRenderedFeatures(
+          [
+            [e.point.x - 6, e.point.y - 6],
+            [e.point.x + 6, e.point.y + 6],
+          ],
+          { layers: [TRACE_LAYER_ID, TRACE_CASING_LAYER_ID] },
+        ).length > 0;
+      const sample = onTrace ? nearestSample(samplesRef.current, e.lngLat.lat, e.lngLat.lng) : null;
+      if (!sample) {
+        hoverPopupRef.current?.remove();
+        map.getCanvas().style.cursor = '';
+        return;
+      }
+      map.getCanvas().style.cursor = 'crosshair';
+      if (!hoverPopupRef.current) {
+        hoverPopupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+      }
+      hoverPopupRef.current.setLngLat([sample.longitude, sample.latitude]).setHTML(sampleTooltipHtml(sample)).addTo(map);
+    });
     // Panne du fond de carte (clé refusée, quota, réseau) : bandeau explicite, le reste du tableau de
     // bord et le suivi temps réel (marqueurs, panneau) restent utilisables.
     map.on('error', (e) => {
@@ -180,6 +425,45 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
       markersRef.current.clear();
     };
   }, []);
+
+  // Plein écran : le bloc couvre toute la fenêtre (CSS, fonctionne partout) et, si le navigateur
+  // l'autorise, passe aussi en vrai plein écran. Échap ou le bouton en sortent.
+  useEffect(() => {
+    expandControlRef.current?.setExpanded(expanded);
+    const root = rootRef.current;
+    if (expanded) {
+      if (root && document.fullscreenEnabled && !document.fullscreenElement) {
+        root
+          .requestFullscreen()
+          .then(() => {
+            nativeFullscreenRef.current = true;
+          })
+          .catch(() => {
+            // refusé (vue intégrée, politique du navigateur) : le plein écran CSS suffit
+          });
+      }
+    } else if (nativeFullscreenRef.current && document.fullscreenElement) {
+      nativeFullscreenRef.current = false;
+      void document.exitFullscreen().catch(() => undefined);
+    }
+    if (!expanded) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false);
+    };
+    // Sortie du vrai plein écran par le navigateur (Échap, geste) : on quitte aussi le mode CSS.
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement && nativeFullscreenRef.current) {
+        nativeFullscreenRef.current = false;
+        setExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+    };
+  }, [expanded]);
 
   // Changement de fond de carte : `setStyle` conserve centre/zoom/pitch et les marqueurs (DOM).
   // Aucun rechargement de page, aucune incidence sur la trace réelle ou le véhicule sélectionné.
@@ -245,6 +529,27 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
       el.style.backgroundColor = statusToColor(vehicle.status);
       el.onclick = () => setSelectedVehicleId(vehicle.id);
 
+      // Sens de marche : flèche autour du point, orientée selon le cap GPS, tant que le véhicule roule.
+      const rolling = vehicle.heading != null && vehicle.heading >= 0 && (vehicle.speedKmh ?? 0) >= 3;
+      let arrow = el.querySelector<HTMLElement>('.vehicle-heading');
+      if (rolling) {
+        if (!arrow) {
+          arrow = document.createElement('span');
+          arrow.className = 'vehicle-heading';
+          arrow.setAttribute('aria-hidden', 'true');
+          arrow.style.cssText = 'position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;';
+          const tip = document.createElement('span');
+          tip.style.cssText =
+            'position:absolute;left:-6px;top:-22px;width:0;height:0;border-left:6px solid transparent;' +
+            'border-right:6px solid transparent;border-bottom:9px solid #0B1F33;filter:drop-shadow(0 0 1px #fff);';
+          arrow.appendChild(tip);
+          el.appendChild(arrow);
+        }
+        arrow.style.transform = `rotate(${vehicle.heading}deg)`;
+      } else {
+        arrow?.remove();
+      }
+
       if (selectedVehicleId === vehicle.id) {
         let label = el.querySelector('.vehicle-label');
         if (!label) {
@@ -255,7 +560,9 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
             'background:#0B1F33;color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:8px;';
           el.appendChild(label);
         }
-        (label as HTMLElement).textContent = vehicle.plate;
+        const speedText =
+          vehicle.speedKmh != null && vehicle.speedKmh >= 3 ? ` · ${Math.round(vehicle.speedKmh)} km/h` : ' · à l’arrêt';
+        (label as HTMLElement).textContent = `${vehicle.plate}${vehicle.position ? speedText : ''}`;
       } else {
         el.querySelector('.vehicle-label')?.remove();
       }
@@ -301,35 +608,33 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
     if (map && mapReady) setTrafficOverlay(map, trafficOn);
   }, [trafficOn, mapReady, styleEpoch]);
 
-  // Manage trace drawing on toggle
+  // Affichage / masquage, et réinstallation après un changement de fond (setStyle vide les couches).
   useEffect(() => {
-    if (traceVisible && tracePointsRef.current.length >= 2) {
-      drawTrace(tracePointsRef.current);
+    const points = [...tracePointsRef.current, ...liveTailRef.current];
+    if (traceVisible && points.length >= 2) {
+      drawTrace(points);
     } else {
       const map = mapRef.current;
-      if (map) {
-        if (map.getLayer(TRACE_LAYER_ID)) map.removeLayer(TRACE_LAYER_ID);
-        if (map.getSource(TRACE_SOURCE_ID)) map.removeSource(TRACE_SOURCE_ID);
-      }
+      if (map) removeTrace(map);
+      hoverPopupRef.current?.remove();
     }
   }, [traceVisible, drawTrace, styleEpoch]);
 
-  // Reset trace state when selecting a different vehicle
+  // Nouveau véhicule sélectionné (ou nouvelle mission) : on repart d'une trace vide et on l'affiche
+  // d'office — la trace verte fait partie du suivi, elle n'est pas cachée derrière un bouton.
   useEffect(() => {
-    if (selectedVehicleId) {
-      const newMissionId = vehicles.find((v) => v.id === selectedVehicleId)?.activeMissionId ?? null;
-      if (newMissionId !== previousMissionIdRef.current) {
-        previousMissionIdRef.current = newMissionId;
-        tracePointsRef.current = [];
-        setMissionTrace(null);
-        setTraceVisible(false);
-        const map = mapRef.current;
-        if (map) {
-          if (map.getLayer(TRACE_LAYER_ID)) map.removeLayer(TRACE_LAYER_ID);
-          if (map.getSource(TRACE_SOURCE_ID)) map.removeSource(TRACE_SOURCE_ID);
-        }
-      }
-    }
+    if (!selectedVehicleId) return;
+    const newMissionId = vehicles.find((v) => v.id === selectedVehicleId)?.activeMissionId ?? null;
+    const key = `${selectedVehicleId}:${newMissionId ?? ''}`;
+    if (key === previousMissionIdRef.current) return;
+    previousMissionIdRef.current = key;
+    tracePointsRef.current = [];
+    liveTailRef.current = [];
+    samplesRef.current = [];
+    setMissionTrace(null);
+    setTraceVisible(true);
+    const map = mapRef.current;
+    if (map) removeTrace(map);
   }, [selectedVehicleId, vehicles]);
 
   return (
@@ -337,8 +642,17 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
     // la carte se réduisait à presque rien et ses surcouches absolues (légende, sélecteur de fond)
     // se superposaient au panneau, rendant les deux illisibles. On empile donc verticalement sous
     // `xl` et on garde la disposition en colonnes au-dessus.
-    <div className="flex h-full w-full flex-col gap-3 p-3 xl:flex-row">
-      <div className={cn('relative min-h-[26rem] min-w-0 flex-1', selectedVehicle ? 'xl:basis-3/4' : '')}>
+    <div
+      ref={rootRef}
+      className={cn(
+        'flex flex-col gap-3 xl:flex-row',
+        // Sous `xl` le panneau passe sous la carte : le bloc plein écran doit défiler pour l'atteindre.
+        expanded ? 'fixed inset-0 z-[70] overflow-y-auto bg-background p-3' : 'h-full w-full',
+      )}
+    >
+      <div
+        className={cn('relative min-h-[26rem] min-w-0 flex-1 bg-background', selectedVehicle ? 'xl:basis-3/4' : '')}
+      >
         <div ref={containerRef} className="h-full w-full overflow-hidden rounded-2xl border border-border shadow-card" data-testid="maplibre-container" />
 
         {selectedVehicle && (
@@ -347,64 +661,80 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
           </div>
         )}
 
-        <div className="pointer-events-none absolute left-4 top-4 z-10 flex max-w-[min(38rem,calc(100%-2rem))] flex-col gap-2.5">
-          <div className="pointer-events-auto rounded-xl border border-border bg-card/95 shadow-card backdrop-blur">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-4 px-3.5 py-2.5 text-xs"
-              aria-expanded={regionPanelOpen}
-              onClick={() => setRegionPanelOpen((open) => !open)}
-            >
-              <span className="truncate">
-                <span className="font-semibold text-foreground">Région</span>
-                {regionPath.length > 0 && (
-                  <span className="text-muted-foreground"> — {regionPath.join(' > ')}</span>
+        {/* Largeur bornée pour ne jamais recouvrir les boutons zoom / plein écran à droite. */}
+        <div className="pointer-events-none absolute left-4 top-4 z-10 flex max-w-[min(38rem,calc(100%-5.5rem))] flex-col gap-2.5">
+          <button
+            type="button"
+            onClick={toggleControls}
+            aria-expanded={controlsVisible}
+            aria-controls="tracking-map-controls"
+            className="pointer-events-auto flex items-center gap-2 self-start rounded-xl border border-border bg-card/95 px-3 py-2 text-xs font-semibold text-foreground shadow-card backdrop-blur hover:bg-card"
+          >
+            {controlsVisible ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Layers className="h-3.5 w-3.5" aria-hidden />}
+            {controlsVisible ? 'Masquer les options' : 'Options de la carte'}
+          </button>
+          {controlsVisible && (
+            <div id="tracking-map-controls" className="flex flex-col gap-2.5">
+              <div className="pointer-events-auto rounded-xl border border-border bg-card/95 shadow-card backdrop-blur">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-4 px-3.5 py-2.5 text-xs"
+                  aria-expanded={regionPanelOpen}
+                  onClick={() => setRegionPanelOpen((open) => !open)}
+                >
+                  <span className="truncate">
+                    <span className="font-semibold text-foreground">Région</span>
+                    {regionPath.length > 0 && (
+                      <span className="text-muted-foreground"> — {regionPath.join(' > ')}</span>
+                    )}
+                  </span>
+                  <span aria-hidden className="text-muted-foreground">
+                    {regionPanelOpen ? '−' : '+'}
+                  </span>
+                </button>
+                {regionPanelOpen && (
+                  <div className="border-t border-border px-3.5 pb-3 pt-2.5">
+                    <RegionSelector
+                      dense
+                      selection={region}
+                      onSelectionChange={setRegion}
+                      viewMode={viewMode}
+                      onViewModeChange={setViewMode}
+                    />
+                  </div>
                 )}
-              </span>
-              <span aria-hidden className="text-muted-foreground">
-                {regionPanelOpen ? '−' : '+'}
-              </span>
-            </button>
-            {regionPanelOpen && (
-              <div className="border-t border-border px-3.5 pb-3 pt-2.5">
-                <RegionSelector
-                  dense
-                  selection={region}
-                  onSelectionChange={setRegion}
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
-                />
               </div>
-            )}
-          </div>
-          <TrackingLegend />
-          {STYLE_SWITCHER_AVAILABLE && (
-            <label className="pointer-events-auto flex items-center gap-2 self-start rounded-xl border border-border bg-card/95 px-3 py-2 text-xs font-semibold shadow-card backdrop-blur">
-              <span className="text-muted-foreground">Fond</span>
-              <select
-                aria-label="Fond de carte"
-                value={baseStyle}
-                onChange={(e) => setBaseStyle(e.target.value as MapBaseStyle)}
-                className="bg-transparent text-foreground outline-none"
-              >
-                {MAP_BASE_STYLE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <TrackingLegend />
+              {STYLE_SWITCHER_AVAILABLE && (
+                <label className="pointer-events-auto flex items-center gap-2 self-start rounded-xl border border-border bg-card/95 px-3 py-2 text-xs font-semibold shadow-card backdrop-blur">
+                  <span className="text-muted-foreground">Fond</span>
+                  <select
+                    aria-label="Fond de carte"
+                    value={baseStyle}
+                    onChange={(e) => setBaseStyle(e.target.value as MapBaseStyle)}
+                    className="bg-transparent text-foreground outline-none"
+                  >
+                    {MAP_BASE_STYLE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {TRAFFIC_AVAILABLE && (
+                <button
+                  type="button"
+                  aria-pressed={trafficOn}
+                  onClick={() => setTrafficOn((v) => !v)}
+                  className="pointer-events-auto self-start rounded-xl border border-border bg-card/95 px-3.5 py-2 text-xs font-semibold shadow-card backdrop-blur"
+                >
+                  Trafic {trafficOn ? 'activé' : 'désactivé'}
+                </button>
+              )}
+            </div>
           )}
-          {TRAFFIC_AVAILABLE && (
-            <button
-              type="button"
-              aria-pressed={trafficOn}
-              onClick={() => setTrafficOn((v) => !v)}
-              className="pointer-events-auto self-start rounded-xl border border-border bg-card/95 px-3.5 py-2 text-xs font-semibold shadow-card backdrop-blur"
-            >
-              Trafic {trafficOn ? 'activé' : 'désactivé'}
-            </button>
-          )}
+          {/* Alertes toujours visibles, même options masquées. */}
           {mapError && (
             <div role="alert" className="pointer-events-auto rounded-xl border border-danger/30 bg-card/95 px-3.5 py-2.5 text-xs font-semibold text-danger shadow-card backdrop-blur">
               Fond de carte indisponible — {mapError} Le suivi des véhicules reste actif.
@@ -444,11 +774,15 @@ export function TrackingMap({ vehicles, connected, socket }: TrackingMapProps) {
               setTraceVisible(false);
               setMissionTrace(null);
               tracePointsRef.current = [];
+              liveTailRef.current = [];
+              samplesRef.current = [];
+              previousMissionIdRef.current = null;
             }}
             onMissionTraceLoaded={handleMissionTraceLoaded}
-            onLivePoint={handleLivePoint}
-            socket={socket}
             trace={missionTrace}
+            roadTrace={roadTrace ?? null}
+            roadTraceLoading={roadTraceQuery.isLoading}
+            roadTraceError={roadTraceQuery.isError}
           />
         )}
       </div>

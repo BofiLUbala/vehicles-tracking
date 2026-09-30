@@ -12,7 +12,8 @@ import { MISSION_STATUS_LABELS } from '@/features/missions/status-labels';
 import { statusToLabel } from '@/features/tracking/status';
 import { useMissionStatusLabel } from '@/features/tracking/mission-status';
 import { MissionProgress } from '@/components/mission-progress';
-import type { LiveVehicle, MissionTraceResponse, VehiclePositionUpdatedEvent } from '@/features/tracking/types';
+import { compassLabel, formatClock, formatStopDuration, stopDurationSeconds } from '@/features/tracking/trace-format';
+import type { LiveVehicle, MissionTraceResponse, VehicleRoadTrace } from '@/features/tracking/types';
 
 interface VehiclePanelProps {
   vehicle: LiveVehicle;
@@ -21,9 +22,27 @@ interface VehiclePanelProps {
   onToggleTrace: () => void;
   onClose: () => void;
   onMissionTraceLoaded?: (trace: MissionTraceResponse) => void;
-  onLivePoint?: (point: { latitude: number; longitude: number; recordedAt: string }) => void;
-  socket?: import('socket.io-client').Socket | null;
   trace?: MissionTraceResponse | null;
+  /** Trace verte affichée sur la carte (recalée sur les routes, ou GPS brut en repli). */
+  roadTrace?: VehicleRoadTrace | null;
+  roadTraceLoading?: boolean;
+  roadTraceError?: boolean;
+}
+
+/** Longueur d'une polyligne (formule de haversine), en mètres. */
+function polylineMeters(points: { latitude: number; longitude: number }[]): number {
+  const R = 6_371_000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const dLat = rad(b.latitude - a.latitude);
+    const dLng = rad(b.longitude - a.longitude);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLng / 2) ** 2;
+    total += 2 * R * Math.asin(Math.sqrt(h));
+  }
+  return total;
 }
 
 function formatDistance(meters: number): string {
@@ -48,7 +67,18 @@ function lastUpdateLabel(iso: string): string {
   return `il y a ${Math.floor(diff / 3_600_000)} h`;
 }
 
-export function VehiclePanel({ vehicle, traceVisible, connected, onToggleTrace, onClose, onMissionTraceLoaded, onLivePoint, socket, trace }: VehiclePanelProps) {
+export function VehiclePanel({
+  vehicle,
+  traceVisible,
+  connected,
+  onToggleTrace,
+  onClose,
+  onMissionTraceLoaded,
+  trace,
+  roadTrace,
+  roadTraceLoading,
+  roadTraceError,
+}: VehiclePanelProps) {
   const traceRef = useRef<MissionTraceResponse | null>(null);
   const missionStatusLabel = useMissionStatusLabel(trace?.status ?? null);
 
@@ -79,23 +109,11 @@ export function VehiclePanel({ vehicle, traceVisible, connected, onToggleTrace, 
     }
   }, [missionQuery.data, onMissionTraceLoaded]);
 
-  useEffect(() => {
-    if (!socket || !vehicle.activeMissionId || !traceVisible) return;
-
-    const handlePosition = (event: VehiclePositionUpdatedEvent) => {
-      if (event.vehicleId === vehicle.id && event.missionId === vehicle.activeMissionId) {
-        onLivePoint?.({ latitude: event.latitude, longitude: event.longitude, recordedAt: event.recordedAt });
-      }
-    };
-
-    socket.on('vehicle.position.updated', handlePosition);
-    return () => {
-      socket.off('vehicle.position.updated', handlePosition);
-    };
-  }, [socket, vehicle.id, vehicle.activeMissionId, traceVisible, onLivePoint]);
-
   const activeTrace = missionQuery.data ?? trace;
-  const shouldShowTrace = traceVisible && !!vehicle.activeMissionId;
+  const roadDistance = roadTrace && roadTrace.points.length >= 2 ? polylineMeters(roadTrace.points) : null;
+  const stops = roadTrace?.stops ?? [];
+  const ongoingStop = stops.find((stop) => stop.ongoing) ?? null;
+  const direction = (vehicle.speedKmh ?? 0) >= 3 ? compassLabel(vehicle.heading) : null;
 
   return (
     <div className="flex max-h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-card">
@@ -129,6 +147,12 @@ export function VehiclePanel({ vehicle, traceVisible, connected, onToggleTrace, 
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Statut</p>
               <span className="font-semibold text-foreground">{statusToLabel(vehicle.status)}</span>
             </div>
+            {ongoingStop && (
+              <p className="mt-2 rounded-lg bg-[#F59E0B]/15 px-2.5 py-1.5 text-xs font-semibold text-foreground">
+                ⏸ À l&apos;arrêt depuis {formatStopDuration(stopDurationSeconds(ongoingStop))}
+                <span className="font-normal text-muted-foreground"> (depuis {formatClock(ongoingStop.startedAt)})</span>
+              </p>
+            )}
           </div>
 
           {vehicle.activeMissionId ? (
@@ -177,6 +201,12 @@ export function VehiclePanel({ vehicle, traceVisible, connected, onToggleTrace, 
               value={vehicle.activeMissionId ? missionDetailStatusLabel ?? '…' : '—'}
               unit=""
             />
+            <StatTile label="Direction" value={direction ?? (ongoingStop ? 'À l’arrêt' : '—')} unit="" />
+            <StatTile
+              label="Vitesse max"
+              value={roadTrace?.stats.maxSpeedKmh ?? '—'}
+              unit={roadTrace?.stats.maxSpeedKmh != null ? 'km/h' : ''}
+            />
           </div>
 
           <div>
@@ -184,16 +214,67 @@ export function VehiclePanel({ vehicle, traceVisible, connected, onToggleTrace, 
               <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Trajet réellement parcouru
               </p>
-              {vehicle.activeMissionId && (
-                <button
-                  type="button"
-                  onClick={onToggleTrace}
-                  className="text-2xs font-semibold text-primary hover:text-primary/80"
-                >
-                  {traceVisible ? 'Masquer' : 'Afficher'}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={onToggleTrace}
+                className="text-2xs font-semibold text-primary hover:text-primary/80"
+              >
+                {traceVisible ? 'Masquer' : 'Afficher'}
+              </button>
             </div>
+
+            {traceVisible && roadTrace && (
+              <div className="mb-2.5 flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2 text-2xs text-muted-foreground">
+                <span aria-hidden className="mt-1 h-1.5 w-4 shrink-0 rounded-full bg-[#18A957]" />
+                <span>
+                  {roadTrace.points.length < 2
+                    ? 'Pas encore assez de positions pour tracer le trajet.'
+                    : `${roadTrace.missionId ? 'Mission en cours' : '12 dernières heures'} · ${
+                        roadTrace.source === 'tomtom-snap-to-roads'
+                          ? 'recalé sur les routes réelles'
+                          : 'positions GPS brutes (recalage indisponible)'
+                      }${roadDistance != null ? ` · ${formatDistance(roadDistance)}` : ''}`}
+                </span>
+              </div>
+            )}
+
+            {traceVisible && roadTrace && roadTrace.points.length >= 2 && (
+              <div className="mb-2.5 space-y-2">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <StatTile
+                    label="Vitesse moyenne"
+                    value={roadTrace.stats.avgMovingSpeedKmh ?? '—'}
+                    unit={roadTrace.stats.avgMovingSpeedKmh != null ? 'km/h' : ''}
+                  />
+                  <StatTile
+                    label={`Arrêts (${stops.length})`}
+                    value={stops.length ? formatStopDuration(stops.reduce((t, stop) => t + stopDurationSeconds(stop), 0)) : '—'}
+                    unit=""
+                  />
+                </div>
+                {stops.length > 0 && (
+                  <ul className="space-y-1 text-2xs text-muted-foreground" aria-label="Arrêts sur le trajet">
+                    {stops
+                      .slice()
+                      .reverse()
+                      .map((stop) => (
+                        <li key={stop.startedAt} className="flex items-center gap-2 rounded-lg bg-muted/40 px-2.5 py-1.5">
+                          <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-[#F59E0B]" />
+                          <span className="font-semibold text-foreground">{formatStopDuration(stopDurationSeconds(stop))}</span>
+                          <span>
+                            {stop.ongoing
+                              ? `en cours depuis ${formatClock(stop.startedAt)}`
+                              : `de ${formatClock(stop.startedAt)} à ${formatClock(stop.endedAt)}`}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+                <p className="text-2xs text-muted-foreground">
+                  Les flèches sur la trace indiquent le sens de marche. Survolez la trace pour voir la vitesse à cet endroit.
+                </p>
+              </div>
+            )}
 
             {activeTrace ? (
               <div className="grid grid-cols-3 gap-2.5">
@@ -209,16 +290,16 @@ export function VehiclePanel({ vehicle, traceVisible, connected, onToggleTrace, 
                   unit=""
                 />
               </div>
-            ) : (
+            ) : !traceVisible ? (
               <p className="rounded-lg bg-muted/40 px-3 py-2 text-2xs text-muted-foreground">
-                Aucune trace affichée. Activez l&apos;affichage du trajet pour un véhicule en mission active.
+                Trace masquée. Touchez « Afficher » pour voir le trajet parcouru.
               </p>
-            )}
+            ) : null}
 
-            {shouldShowTrace && missionQuery.isLoading && (
+            {traceVisible && roadTraceLoading && (
               <p className="mt-2 text-2xs text-muted-foreground">Chargement de la trace…</p>
             )}
-            {shouldShowTrace && missionQuery.isError && (
+            {traceVisible && roadTraceError && (
               <p className="mt-2 text-2xs text-danger">Impossible de charger la trace.</p>
             )}
           </div>
