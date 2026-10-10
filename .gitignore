@@ -13,3 +13,8 @@ android/.gradle/
 infrastructure/backups/*
 !infrastructure/backups/.gitkeep
 *.tsbuildinfo
+*.apk
+*.apks
+*.aab
+.gradle/
+.gradle-cache/

@@ -7,6 +7,7 @@ interface WebDBTables {
   pending_validations: WebDBRow[];
   pending_fuel_records: WebDBRow[];
   today_missions_cache: WebDBRow[];
+  active_driver: WebDBRow[];
 }
 
 interface WebDatabase {
@@ -46,6 +47,7 @@ function createStore(name: string): WebDBTables {
     pending_validations: [],
     pending_fuel_records: [],
     today_missions_cache: [],
+    active_driver: [],
   };
 }
 
@@ -65,6 +67,7 @@ export function getDatabase(): WebDatabase {
     WEB_DB.pending_validations = WEB_DB.pending_validations || [];
     WEB_DB.pending_fuel_records = WEB_DB.pending_fuel_records || [];
     WEB_DB.today_missions_cache = WEB_DB.today_missions_cache || [];
+    WEB_DB.active_driver = WEB_DB.active_driver || [];
     DB_INITIALIZED = true;
   }
 
@@ -78,7 +81,7 @@ export function getDatabase(): WebDatabase {
       return rows.length > 0 ? rows[0] : null;
     },
 
-    getAllSync<T = unknown>(sql: string, ..._params: unknown[]): T[] {
+    getAllSync<T = unknown>(sql: string, ...params: unknown[]): T[] {
       const selectMatch = sql.match(/SELECT\s+(.+?)\s+FROM\s+(\w+)(?:\s+WHERE\s+(.+?))?(?:\s+ORDER\s+BY\s+(.+?))?(?:\s+LIMIT\s+(\d+))?(?:\s+OFFSET\s+(\d+))?/i);
       if (selectMatch) {
         const table = selectMatch[2] as keyof WebDBTables;
@@ -86,13 +89,14 @@ export function getDatabase(): WebDatabase {
         let rows = WEB_DB[table] || [];
         if (where) {
           const conditions = where.split(/\s+AND\s+/i);
+          let parameterIndex = 0;
           rows = rows.filter((row: WebDBRow) => {
             return conditions.every((cond: string) => {
               const [col, op, val] = cond.split(/\s*(=|!=|<|>|<=|>=|LIKE)\s*/);
               const key = col.trim().replace(/['"]/g, '');
-              // Aperçu web : ce faux SQL ignore les paramètres liés (`driver_id = ?`) ; pas de file native ici.
-              if (key === 'driver_id') return true;
-              const v = val?.trim().replace(/^['"]|['"]$/g, '');
+              const token = val?.trim();
+              const raw = token === '?' ? params[parameterIndex++] : token;
+              const v = typeof raw === 'string' ? raw.replace(/^['"]|['"]$/g, '') : raw;
               const rv = row[key];
               if (op === '=' || op === '==') return String(rv) === String(v);
               if (op === '!=') return String(rv) !== String(v);
@@ -115,7 +119,15 @@ export function getDatabase(): WebDatabase {
         if (insertMatch) {
           const table = insertMatch[1] as keyof WebDBTables;
           const columns = insertMatch[2].split(',').map((c: string) => c.trim().replace(/['"]/g, ''));
-          const values = params.length > 0 ? params : insertMatch[3].split(',').map((v: string) => {
+          const valueTokens = insertMatch[3].split(',');
+          let paramIndex = 0;
+          const values = params.length > 0 ? valueTokens.map((token: string) => {
+            const t = token.trim();
+            if (t === '?') return params[paramIndex++];
+            if (/^null$/i.test(t)) return null;
+            const n = Number(t);
+            return !Number.isNaN(n) && t !== '' ? n : t.replace(/^['"]|['"]$/g, '');
+          }) : valueTokens.map((v: string) => {
             const t = v.trim();
             if (t === 'NULL' || t === 'null') return null;
             const n = Number(t);
@@ -125,7 +137,8 @@ export function getDatabase(): WebDatabase {
           const row: WebDBRow = {};
           columns.forEach((col: string, i: number) => { row[col] = values[i]; });
           if (!WEB_DB[table]) WEB_DB[table] = [];
-          WEB_DB[table].push(row);
+          if (table === 'active_driver') WEB_DB[table] = [row];
+          else WEB_DB[table].push(row);
           saveStore(DB_NAME, WEB_DB);
           return { changes: 1, lastInsertRowId: WEB_DB[table].length };
         }
@@ -139,7 +152,9 @@ export function getDatabase(): WebDatabase {
           const row: WebDBRow = {};
           columns.forEach((col, i) => { row[col] = values[i]; });
           if (!WEB_DB[table]) WEB_DB[table] = [];
-          WEB_DB[table].push(row);
+          if (table === 'active_driver') WEB_DB[table] = [row];
+          else if (table === 'today_missions_cache') WEB_DB[table] = [row];
+          else WEB_DB[table].push(row);
           saveStore(DB_NAME, WEB_DB);
           return { changes: 1, lastInsertRowId: WEB_DB[table].length };
         }
@@ -150,9 +165,16 @@ export function getDatabase(): WebDatabase {
         if (delMatch) {
           const table = delMatch[1] as keyof WebDBTables;
           const before = (WEB_DB[table] || []).length;
-          WEB_DB[table] = [];
+          let paramIndex = 0;
+          WEB_DB[table] = delMatch[2] ? (WEB_DB[table] || []).filter((row: WebDBRow) => {
+            return !delMatch[2]!.split(/\s+AND\s+/i).every((condition: string) => {
+              const [column, , token] = condition.split(/\s*(=|!=|<|>|<=|>=)\s*/);
+              const expected = token?.trim() === '?' ? params[paramIndex++] : token?.trim().replace(/^['"]|['"]$/g, '');
+              return String(row[column.trim()]) === String(expected);
+            });
+          }) : [];
           saveStore(DB_NAME, WEB_DB);
-          return { changes: before, lastInsertRowId: 0 };
+          return { changes: before - WEB_DB[table].length, lastInsertRowId: 0 };
         }
       }
 
@@ -168,17 +190,21 @@ export function getDatabase(): WebDatabase {
             const [col, val] = s.split('=').map((x: string) => x.trim());
             return { col: col.replace(/['"]/g, ''), val };
           });
+          const setPlaceholderCount = setParts.filter(({ val }) => val === '?').length;
+          let whereParamIndex = 0;
           rows = rows.map((row: WebDBRow) => {
             const shouldUpdate = !where || where.split(/\s+AND\s+/).every((c: string) => {
               const [col, , val] = c.split(/\s*(=)\s*/);
-              return String(row[col.trim()]) === String(val.trim().replace(/^['"]|['"]$/g, ''));
+              const expected = val.trim() === '?' ? params[setPlaceholderCount + whereParamIndex++] : val.trim().replace(/^['"]|['"]$/g, '');
+              return String(row[col.trim()]) === String(expected);
             });
             if (shouldUpdate) {
               updated++;
               const newRow = { ...row };
+              let setParamIndex = 0;
               setParts.forEach(({ col, val }: { col: string; val: string }) => {
                 const v = val.trim().replace(/^['"]|['"]$/g, '');
-                newRow[col] = isNaN(Number(v)) ? v : Number(v);
+                newRow[col] = v === '?' ? params[setParamIndex++] : isNaN(Number(v)) ? v : Number(v);
               });
               return newRow;
             }

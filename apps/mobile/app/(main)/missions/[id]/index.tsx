@@ -66,7 +66,7 @@ export default function MissionDetailScreen() {
       // On recharge donc le détail chauffeur, qui seul garantit la forme mobile complète.
       const current = await MissionsApi.getMissionDetail(mission.id).catch(() => started);
       setMission(current);
-      // Start background & foreground GPS tracking for this mission and vehicle
+      // Ask for location only after the driver explicitly starts a mission.
       const trackingStarted = await startTracking(current.vehicleId, current.id);
       if (!trackingStarted) {
         setStartError('Mission démarrée, mais le GPS n’est pas autorisé. Activez la localisation pour continuer.');

@@ -38,20 +38,19 @@ class TrackingServiceClass {
     }
   }
 
-  async requestPermissions(): Promise<{
-    foregroundGranted: boolean;
-    backgroundGranted: boolean;
-  }> {
+  async requestPermissions(): Promise<{ foregroundGranted: boolean; backgroundGranted: boolean }> {
     const foreground = await Location.requestForegroundPermissionsAsync();
-    if (!foreground.granted) {
-      return { foregroundGranted: false, backgroundGranted: false };
-    }
+    return { foregroundGranted: foreground.granted, backgroundGranted: false };
+  }
 
-    const background = await Location.requestBackgroundPermissionsAsync();
-    return {
-      foregroundGranted: true,
-      backgroundGranted: background.granted,
-    };
+  /** Ask for always/background access only after the user starts an explained active mission. */
+  async requestBackgroundPermission(): Promise<boolean> {
+    const foreground = await Location.getForegroundPermissionsAsync();
+    if (!foreground.granted) return false;
+    const background = await Location.getBackgroundPermissionsAsync();
+    if (background.granted) return true;
+    const requested = await Location.requestBackgroundPermissionsAsync();
+    return requested.granted;
   }
 
   async checkPermissions(): Promise<{
@@ -95,15 +94,20 @@ class TrackingServiceClass {
   }
 
   async startTracking(vehicleId: string, missionId?: string | null): Promise<boolean> {
-    const permissions = await this.checkPermissions();
+    let permissions = await this.checkPermissions();
     if (!permissions.foregroundGranted) {
       const requested = await this.requestPermissions();
       if (!requested.foregroundGranted) return false;
+      permissions = { ...permissions, foregroundGranted: requested.foregroundGranted };
     }
 
     // Pas de suivi sans chauffeur connecté : chaque point doit avoir un propriétaire.
     const driverId = ActiveOwner.get();
     if (!driverId) return false;
+
+    // Android requests background access separately and in context. Foreground tracking remains
+    // useful if the driver declines this optional-to-foreground permission.
+    const backgroundGranted = permissions.backgroundGranted || await this.requestBackgroundPermission();
 
     this.activeVehicleId = vehicleId;
     this.activeMissionId = missionId || null;
@@ -134,24 +138,26 @@ class TrackingServiceClass {
     }
 
     // Start background tracking service
-    try {
-      const isRegistered = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-      if (!isRegistered) {
-        await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-          accuracy: Location.Accuracy.High,
-          distanceInterval: 15,
-          timeInterval: 15000,
-          deferredUpdatesInterval: 15000,
-          showsBackgroundLocationIndicator: true,
-          foregroundService: {
-            notificationTitle: 'Mission en cours',
-            notificationBody: 'Le suivi du vehicule est actif pendant votre mission.',
-            notificationColor: '#0284C7',
-          },
-        });
+    if (backgroundGranted) {
+      try {
+        const isRegistered = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+        if (!isRegistered) {
+          await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+            accuracy: Location.Accuracy.High,
+            distanceInterval: 15,
+            timeInterval: 15000,
+            deferredUpdatesInterval: 15000,
+            showsBackgroundLocationIndicator: true,
+            foregroundService: {
+              notificationTitle: 'Mission en cours',
+              notificationBody: 'Le suivi du vehicule est actif pendant votre mission.',
+              notificationColor: '#0284C7',
+            },
+          });
+        }
+      } catch {
+        // The foreground watcher still records points if background access is unavailable.
       }
-    } catch {
-      // On some platforms or Expo Go, background tracking may not be available without dev-client
     }
 
     // Fallback periodic capture every 15s
